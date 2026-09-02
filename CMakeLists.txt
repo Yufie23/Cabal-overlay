@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────────────────────
+# cabal-overlay — build definition
+#
+# CMake is the "package.json" of C++: it declares what we build,
+# which language standard we use, and which external libraries
+# we link against. Ninja (the -G flag when configuring) is the
+# tool that actually runs the compiler, like make but faster.
+# ─────────────────────────────────────────────────────────────
+
+cmake_minimum_required(VERSION 3.25)
+
+project(cabal-overlay
+    VERSION 0.1.0
+    DESCRIPTION "Native Wayland overlay for Cabal Online (private server)"
+    LANGUAGES CXX
+)
+
+# C++20 is required: we use std::chrono::zoned_time for the
+# Europe/Berlin server clock and std::format for text output.
+# CXX_EXTENSIONS OFF means "strict standard C++, no GNU extras",
+# which keeps the code portable between g++ and clang++.
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Default to a Debug build (with assertions and debug symbols)
+# when the developer does not pick one explicitly.
+if(NOT CMAKE_BUILD_TYPE)
+    set(CMAKE_BUILD_TYPE Debug)
+endif()
+
+# pkg-config is how Linux libraries announce their compiler and
+# linker flags. IMPORTED_TARGET gives us a clean CMake target
+# (PkgConfig::GTK4) instead of raw flag strings.
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
+pkg_check_modules(LAYER_SHELL REQUIRED IMPORTED_TARGET gtk4-layer-shell-0)
+
+add_executable(cabal-overlay
+    src/main.cpp
+)
+
+target_link_libraries(cabal-overlay PRIVATE
+    PkgConfig::GTK4
+    PkgConfig::LAYER_SHELL
+)
+
+# Treat warnings seriously from day one: -Wall -Wextra enable the
+# common ones, -Wpedantic rejects non-standard C++. Warnings in
+# C++ are usually real bugs the compiler is politely pointing at.
+target_compile_options(cabal-overlay PRIVATE -Wall -Wextra -Wpedantic)
