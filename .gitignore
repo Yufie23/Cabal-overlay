@@ -1,0 +1,33 @@
+# ── Third-party work (NOT ours — never commit) ──────────────
+# The clan's tracker is Marz's work (Prosperity guild). Reference only.
+/Prosperity_Task_Tracker.v6.1/
+
+# Local design docs / planning notes (keep out of the public repo)
+/docs
+
+# ── Conversations / logs ────────────────────────────────────
+*logs*
+.directory
+
+# ── C/C++ build artifacts ───────────────────────────────────
+/build/
+/build-*/
+*.o
+*.obj
+*.a
+*.so
+compile_commands.json
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+
+# ── Runtime state (local test data, tracker-schema JSON) ────
+state.json
+*.state.json
+
+# ── Editor / IDE ────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*~

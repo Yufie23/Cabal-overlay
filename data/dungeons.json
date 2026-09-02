@@ -1,0 +1,350 @@
+{
+  "source": "Prosperity_Task_Tracker.v6.1",
+  "count": 86,
+  "dungeons": [
+    {
+      "name": "Abandoned City",
+      "maxRuns": 30
+    },
+    {
+      "name": "Mirage Island",
+      "maxRuns": 30
+    },
+    {
+      "name": "Forgotten Temple B3F",
+      "maxRuns": 30
+    },
+    {
+      "name": "Mirage Island (Awakened)",
+      "maxRuns": 30
+    },
+    {
+      "name": "Weakened Frozen Tower of the Undead B1F",
+      "maxRuns": 10
+    },
+    {
+      "name": "Flame Dimension",
+      "maxRuns": 7
+    },
+    {
+      "name": "Legend Arena",
+      "maxRuns": 0
+    },
+    {
+      "name": "Weakened Ruina Station",
+      "maxRuns": 1
+    },
+    {
+      "name": "Automata Lab",
+      "maxRuns": 30
+    },
+    {
+      "name": "Celestia",
+      "maxRuns": 30
+    },
+    {
+      "name": "Infinite Ordeal",
+      "maxRuns": 0
+    },
+    {
+      "name": "Palestra Inferna",
+      "maxRuns": 0
+    },
+    {
+      "name": "Purifier of the Forest",
+      "maxRuns": 30
+    },
+    {
+      "name": "Weakened Lake In Dusk",
+      "maxRuns": 10
+    },
+    {
+      "name": "Devil's Tower (Part2)",
+      "maxRuns": 2
+    },
+    {
+      "name": "Flame Nest",
+      "maxRuns": 30
+    },
+    {
+      "name": "Frozen Canyon",
+      "maxRuns": 30
+    },
+    {
+      "name": "Terminus Machina",
+      "maxRuns": 30
+    },
+    {
+      "name": "Ancient Tomb",
+      "maxRuns": 30
+    },
+    {
+      "name": "(Elite) Tower of Undead B3F",
+      "maxRuns": 5
+    },
+    {
+      "name": "Garden of Dust",
+      "maxRuns": 30
+    },
+    {
+      "name": "Glacies Inferna",
+      "maxRuns": 10
+    },
+    {
+      "name": "Edge of Phantom",
+      "maxRuns": 30
+    },
+    {
+      "name": "(Elite) Maquinas Outpost",
+      "maxRuns": 5
+    },
+    {
+      "name": "Holy Shrine",
+      "maxRuns": 2
+    },
+    {
+      "name": "Tower of the Dead B3F (Part2)",
+      "maxRuns": 30
+    },
+    {
+      "name": "Chaos Arena Lv.7",
+      "maxRuns": 15
+    },
+    {
+      "name": "Illusion Castle Radiant Hall (Apocrypha)",
+      "maxRuns": 30
+    },
+    {
+      "name": "Tower of Undead B3F",
+      "maxRuns": 30
+    },
+    {
+      "name": "Eternal Chaos Arena",
+      "maxRuns": 8
+    },
+    {
+      "name": "Forbidden Island (Awakened)",
+      "maxRuns": 30
+    },
+    {
+      "name": "Pandemonium",
+      "maxRuns": 30
+    },
+    {
+      "name": "Maquinas Outpost",
+      "maxRuns": 30
+    },
+    {
+      "name": "Forgotten Temple B2F (Awakened)",
+      "maxRuns": 30
+    },
+    {
+      "name": "Holy Keldrasil",
+      "maxRuns": 2
+    },
+    {
+      "name": "Devil's Tower",
+      "maxRuns": 2
+    },
+    {
+      "name": "Illusion Castle Underworld (Apocrypha)",
+      "maxRuns": 30
+    },
+    {
+      "name": "Acheron Arena",
+      "maxRuns": 30
+    },
+    {
+      "name": "Lava Hellfire (Awakened)",
+      "maxRuns": 30
+    },
+    {
+      "name": "Steamer Crazy (Awakened)",
+      "maxRuns": 30
+    },
+    {
+      "name": "Catacomb Frost (Awakened)",
+      "maxRuns": 30
+    },
+    {
+      "name": "Panic Cave (Awakened)",
+      "maxRuns": 30
+    },
+    {
+      "name": "Hazardous Valley (Awakened)",
+      "maxRuns": 30
+    },
+    {
+      "name": "Holy Windmill",
+      "maxRuns": 3
+    },
+    {
+      "name": "Labyrinth",
+      "maxRuns": 30
+    },
+    {
+      "name": "Forgotten Temple B2F",
+      "maxRuns": 30
+    },
+    {
+      "name": "Altar of Siena B2F",
+      "maxRuns": 30
+    },
+    {
+      "name": "Forbidden Island",
+      "maxRuns": 30
+    },
+    {
+      "name": "Illusion Castle Radiant Hall",
+      "maxRuns": 30
+    },
+    {
+      "name": "Chaos Arena Lv.6",
+      "maxRuns": 10
+    },
+    {
+      "name": "(Elite) Catacomb Frost (Premium)",
+      "maxRuns": 5
+    },
+    {
+      "name": "(Elite) Lava Hellfire (Premium)",
+      "maxRuns": 5
+    },
+    {
+      "name": "(Elite) Steamer Crazy (Premium)",
+      "maxRuns": 5
+    },
+    {
+      "name": "(Elite) Panic Cave (Premium)",
+      "maxRuns": 5
+    },
+    {
+      "name": "Forgotten Temple B1F",
+      "maxRuns": 30
+    },
+    {
+      "name": "Chaos Arena Lv.4",
+      "maxRuns": 7
+    },
+    {
+      "name": "Altar of Siena B1F",
+      "maxRuns": 30
+    },
+    {
+      "name": "Chaos Arena Lv.5",
+      "maxRuns": 7
+    },
+    {
+      "name": "Hazardous Valley (Easy)",
+      "maxRuns": 10
+    },
+    {
+      "name": "Tower of the Undead B2F",
+      "maxRuns": 50
+    },
+    {
+      "name": "Hazardous Valley (Normal)",
+      "maxRuns": 10
+    },
+    {
+      "name": "Hazardous Valley (Hard)",
+      "maxRuns": 20
+    },
+    {
+      "name": "Catacomb Frost (Hard)",
+      "maxRuns": 20
+    },
+    {
+      "name": "Panic Cave (Premium)",
+      "maxRuns": 15
+    },
+    {
+      "name": "Steamer Crazy (Hard)",
+      "maxRuns": 20
+    },
+    {
+      "name": "Panic Cave (Hard)",
+      "maxRuns": 20
+    },
+    {
+      "name": "Chaos Arena Lv.2",
+      "maxRuns": 5
+    },
+    {
+      "name": "Volcanic Citadel",
+      "maxRuns": 90
+    },
+    {
+      "name": "Illusion Castle Underworld",
+      "maxRuns": 30
+    },
+    {
+      "name": "Chaos Arena Lv.3",
+      "maxRuns": 5
+    },
+    {
+      "name": "Catacomb Frost (Normal)",
+      "maxRuns": 10
+    },
+    {
+      "name": "Lava Hellfire (Normal)",
+      "maxRuns": 10
+    },
+    {
+      "name": "Steamer Crazy (Normal)",
+      "maxRuns": 10
+    },
+    {
+      "name": "Lava Hellfire (Premium)",
+      "maxRuns": 15
+    },
+    {
+      "name": "Catacomb Frost (Premium)",
+      "maxRuns": 15
+    },
+    {
+      "name": "Panic Cave (Normal)",
+      "maxRuns": 10
+    },
+    {
+      "name": "Lava Hellfire (Hard)",
+      "maxRuns": 20
+    },
+    {
+      "name": "Steamer Crazy (Premium)",
+      "maxRuns": 15
+    },
+    {
+      "name": "Lake in Dusk",
+      "maxRuns": 90
+    },
+    {
+      "name": "Ruina Station",
+      "maxRuns": 90
+    },
+    {
+      "name": "Chaos Arena Lv.1",
+      "maxRuns": 5
+    },
+    {
+      "name": "Tower of the Undead B1F",
+      "maxRuns": 50
+    },
+    {
+      "name": "Catacomb Frost (Easy)",
+      "maxRuns": 10
+    },
+    {
+      "name": "Steamer Crazy (Easy)",
+      "maxRuns": 10
+    },
+    {
+      "name": "Lava Hellfire (Easy)",
+      "maxRuns": 10
+    },
+    {
+      "name": "Panic Cave (Easy)",
+      "maxRuns": 10
+    }
+  ]
+}

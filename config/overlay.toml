@@ -1,0 +1,58 @@
+# Cabal Overlay — configuration
+# All times are server time (Europe/Berlin, CET/CEST handled automatically).
+
+[overlay]
+anchor = "top-right"
+margin_x = 20
+margin_y = 60
+opacity = 0.85
+theme = "prosperity"        # prosperity | procyon | capella
+
+[alarms]
+enabled = false
+volume = 50                 # 0-100
+warn_before_min = 5
+daily = true
+weekly = true
+gdg = true
+world_boss = true
+nation_war = true
+
+# Schedules below mirror Prosperity Task Tracker v6.1.
+# Edit here if the server or clan changes them — no recompile needed.
+
+[[schedule]]
+id = "daily_reset"
+name = "Daily Reset"
+kind = "daily"
+times = ["00:00"]
+alarm = "daily"
+
+[[schedule]]
+id = "weekly_reset"
+name = "Weekly Reset"
+kind = "weekly"
+weekday = "wednesday"
+time = "00:00"
+alarm = "weekly"
+
+[[schedule]]
+id = "gdg"
+name = "Guild Dungeon"
+kind = "daily"
+times = ["00:00", "19:55"]
+alarm = "gdg"
+
+[[schedule]]
+id = "world_boss"
+name = "World Boss"
+kind = "daily"
+times = ["09:30", "21:30"]
+alarm = "world_boss"
+
+[[schedule]]
+id = "nation_war"
+name = "Nation War"
+kind = "daily"
+times = ["01:00", "04:00", "07:00", "10:00", "13:00", "16:00", "19:00", "22:00"]
+alarm = "nation_war"
