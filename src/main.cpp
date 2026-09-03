@@ -1,43 +1,47 @@
 // ─────────────────────────────────────────────────────────────
 // cabal-overlay — entry point
 //
-// Milestone: a click-through, always-on-top bar anchored to the
-// bottom-left corner of the screen, rendering above every window
+// A click-through, always-on-top bar floating above every window
 // (including the game), showing Cabal server time and local time.
 //
-// Prototype control: CLICK the bar to quit the application.
+// Controls:
+//   - Default mode is CLICK-THROUGH: clicks fall through to the game.
+//   - The "toggle-interactive" D-Bus action flips to clickable mode
+//     (bind it to a KDE custom shortcut). While interactive, clicking
+//     the bar returns to click-through mode.
+//   - Close from a terminal: pkill cabal-overlay
+//
+// This file only orchestrates: it wires GTK signals, the D-Bus
+// action and the 1-second timer. Time logic lives in clock.*, and
+// everything Wayland-specific lives in platform/overlay_wayland.cpp
+// behind the platform:: contract (platform/overlay.h).
 // ─────────────────────────────────────────────────────────────
 
-#include <chrono>
-#include <format>
-#include <string>
-
 #include <gtk/gtk.h>
-#include <gtk4-layer-shell/gtk4-layer-shell.h>
 
-// Anonymous namespace: everything inside is private to this file,
-// like `static` at file scope. Nothing here can be referenced
-// (or clash) from other translation units.
+#include "clock.h"
+#include "platform/overlay.h"
+
 namespace {
 
-// The game server runs on Europe/Berlin time (CET/CEST). The IANA
-// timezone database handles daylight-saving switches for us.
-constexpr char kServerTimezone[] = "Europe/Berlin";
-constexpr char kApplicationId[]  = "dev.cabal.Overlay";
+constexpr char kApplicationId[] = "dev.cabal.Overlay";
 
-// Text shown in the bar. One single system-clock reading ("now") is
-// converted twice: into the server's timezone (Europe/Berlin) and into
-// the machine's local timezone, so both clocks always stay in sync.
-std::string clock_text() {
-    const auto now = std::chrono::system_clock::now();
+// ── Module state ─────────────────────────────────────────────
+// Exactly one window and one mode flag, owned by the single
+// GtkApplication instance. If the app ever grows more windows,
+// this becomes a small class.
+GtkWindow* g_window = nullptr;
+bool       g_interactive = false;
 
-    const auto* server_zone = std::chrono::locate_zone(kServerTimezone);
-    const std::chrono::zoned_time server_now{server_zone, now};
+void set_interactive(bool enabled) {
+    g_interactive = enabled;
+    platform::overlay_set_interactive(g_window, enabled);
+}
 
-    // current_zone() reads the timezone configured in the OS itself.
-    const std::chrono::zoned_time local_now{std::chrono::current_zone(), now};
-
-    return std::format("SRV {:%H:%M} | LOC {:%H:%M}", server_now, local_now);
+// D-Bus action handler. Signature fixed by GAction: the action
+// itself, an optional parameter variant (unused here), user data.
+void on_toggle_interactive(GSimpleAction*, GVariant*, gpointer) {
+    set_interactive(!g_interactive);
 }
 
 // g_timeout_add callback. GLib timers expect this exact signature:
@@ -50,8 +54,10 @@ gboolean on_tick(gpointer label_ptr) {
     return G_SOURCE_CONTINUE;
 }
 
-void on_bar_clicked(GtkGestureClick*, gint, gdouble, gdouble, gpointer app_ptr) {
-    g_application_quit(G_APPLICATION(app_ptr));
+void on_bar_clicked(GtkGestureClick*, gint, gdouble, gdouble, gpointer) {
+    // Clicks only reach the bar while interactive, so a click here
+    // means "I'm done": hand the mouse back to the game.
+    set_interactive(false);
 }
 
 // GTK styling works with CSS, same idea as the web tracker but
@@ -80,32 +86,24 @@ void apply_css() {
 void on_activate(GtkApplication* app, gpointer) {
     apply_css();
     GtkWidget* window = gtk_application_window_new(app);
+    g_window = GTK_WINDOW(window);
 
-    // ── Layer-shell setup: what turns a plain window into an overlay.
-    // OVERLAY layer  → drawn above everything, even fullscreen apps.
-    // Anchors        → pinned to the bottom-left corner, with margins.
-    // Exclusive zone -1 → "I float on top, don't reserve space for me".
-    // Keyboard NONE  → we never steal key focus from the game.
-    gtk_layer_init_for_window(GTK_WINDOW(window));
-    gtk_layer_set_layer(GTK_WINDOW(window), GTK_LAYER_SHELL_LAYER_OVERLAY);
-    gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
-    gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
-    gtk_layer_set_margin(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_BOTTOM, 35);
-    gtk_layer_set_margin(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_LEFT, 1);
-    gtk_layer_set_exclusive_zone(GTK_WINDOW(window), -1);
-    gtk_layer_set_keyboard_mode(GTK_WINDOW(window), GTK_LAYER_SHELL_KEYBOARD_MODE_NONE);
+    // All Wayland-specific setup is one call behind the platform
+    // contract; this file does not know what layer-shell is.
+    platform::overlay_init(g_window);
 
     GtkWidget* bar = gtk_label_new(clock_text().c_str());
     gtk_widget_add_css_class(bar, "overlay-bar");
 
-    // Prototype convenience: click the bar to quit. Real input
-    // handling (D-Bus toggle, expand/collapse) comes later.
     auto* click = gtk_gesture_click_new();
     g_signal_connect(click, "pressed", G_CALLBACK(on_bar_clicked), app);
     gtk_widget_add_controller(bar, GTK_EVENT_CONTROLLER(click));
 
     gtk_window_set_child(GTK_WINDOW(window), bar);
     gtk_window_present(GTK_WINDOW(window));
+
+    // Start in click-through mode: the game keeps the mouse.
+    set_interactive(false);
 
     // Tick once per second to refresh the clock.
     g_timeout_add(1000, on_tick, bar);
@@ -115,10 +113,25 @@ void on_activate(GtkApplication* app, gpointer) {
 
 int main(int argc, char* argv[]) {
     // GtkApplication gives us the GLib main loop, a unique D-Bus name
-    // (dev.cabal.Overlay — the same one later phases will expose the
-    // show/hide API on) and single-instance behavior for free.
+    // (dev.cabal.Overlay) and single-instance behavior for free.
     auto* app = gtk_application_new(kApplicationId, G_APPLICATION_DEFAULT_FLAGS);
     g_signal_connect(app, "activate", G_CALLBACK(on_activate), nullptr);
+
+    // GAction entries registered on the app are automatically exported
+    // over D-Bus (interface org.gtk.Actions). This is the public remote
+    // control of the overlay; KDE custom shortcuts call it:
+    //   gdbus call --session --dest dev.cabal.Overlay --object-path /dev/cabal/Overlay --method org.gtk.Actions.Activate toggle-interactive [] {}
+    const GActionEntry actions[] = {
+        {
+            .name           = "toggle-interactive",
+            .activate       = on_toggle_interactive,
+            .parameter_type = nullptr,
+            .state          = nullptr,
+            .change_state   = nullptr,
+            .padding        = {0, 0, 0},
+        },
+    };
+    g_action_map_add_action_entries(G_ACTION_MAP(app), actions, G_N_ELEMENTS(actions), app);
 
     const int status = g_application_run(G_APPLICATION(app), argc, argv);
     g_object_unref(app);

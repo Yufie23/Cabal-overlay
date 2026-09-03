@@ -41,9 +41,19 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
 pkg_check_modules(LAYER_SHELL REQUIRED IMPORTED_TARGET gtk4-layer-shell-0)
 
+# Source files. The platform backend is chosen here: today there is
+# only the Wayland one, but the day a Windows build is needed this
+# becomes `if(WIN32) overlay_windows.cpp else() overlay_wayland.cpp`
+# and NOTHING else in the project changes — that is the whole point
+# of the platform/ contract.
 add_executable(cabal-overlay
     src/main.cpp
+    src/clock.cpp
+    src/platform/overlay_wayland.cpp
 )
+
+# Lets sources write #include "platform/overlay.h" from anywhere.
+target_include_directories(cabal-overlay PRIVATE src)
 
 target_link_libraries(cabal-overlay PRIVATE
     PkgConfig::GTK4
