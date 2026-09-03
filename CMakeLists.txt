@@ -23,6 +23,11 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Always emit compile_commands.json: the clangd language server
+# (VSCode extension) reads it to give exact IntelliSense, go-to-
+# definition and semantic coloring for this project.
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+
 # Default to a Debug build (with assertions and debug symbols)
 # when the developer does not pick one explicitly.
 if(NOT CMAKE_BUILD_TYPE)

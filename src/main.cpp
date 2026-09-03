@@ -2,8 +2,8 @@
 // cabal-overlay — entry point
 //
 // Milestone: a click-through, always-on-top bar anchored to the
-// top-right corner of the screen, rendering above every window
-// (including the game), showing live Cabal server time.
+// bottom-left corner of the screen, rendering above every window
+// (including the game), showing Cabal server time and local time.
 //
 // Prototype control: CLICK the bar to quit the application.
 // ─────────────────────────────────────────────────────────────
@@ -25,12 +25,19 @@ namespace {
 constexpr char kServerTimezone[] = "Europe/Berlin";
 constexpr char kApplicationId[]  = "dev.cabal.Overlay";
 
-// Text shown in the bar. zoned_time converts the absolute system
-// clock ("now") into wall-clock time at the server's location.
-std::string server_time_text() {
-    const auto* zone = std::chrono::locate_zone(kServerTimezone);
-    const std::chrono::zoned_time server_now{zone, std::chrono::system_clock::now()};
-    return std::format("Server {:%H:%M:%S}", server_now);
+// Text shown in the bar. One single system-clock reading ("now") is
+// converted twice: into the server's timezone (Europe/Berlin) and into
+// the machine's local timezone, so both clocks always stay in sync.
+std::string clock_text() {
+    const auto now = std::chrono::system_clock::now();
+
+    const auto* server_zone = std::chrono::locate_zone(kServerTimezone);
+    const std::chrono::zoned_time server_now{server_zone, now};
+
+    // current_zone() reads the timezone configured in the OS itself.
+    const std::chrono::zoned_time local_now{std::chrono::current_zone(), now};
+
+    return std::format("SRV {:%H:%M} | LOC {:%H:%M}", server_now, local_now);
 }
 
 // g_timeout_add callback. GLib timers expect this exact signature:
@@ -38,7 +45,7 @@ std::string server_time_text() {
 // returning G_SOURCE_REMOVE would stop it.
 gboolean on_tick(gpointer label_ptr) {
     auto* label = GTK_LABEL(label_ptr);
-    const std::string text = server_time_text();
+    const std::string text = clock_text();
     gtk_label_set_text(label, text.c_str());
     return G_SOURCE_CONTINUE;
 }
@@ -76,19 +83,19 @@ void on_activate(GtkApplication* app, gpointer) {
 
     // ── Layer-shell setup: what turns a plain window into an overlay.
     // OVERLAY layer  → drawn above everything, even fullscreen apps.
-    // Anchors        → pinned to the top-right corner, with margins.
+    // Anchors        → pinned to the bottom-left corner, with margins.
     // Exclusive zone -1 → "I float on top, don't reserve space for me".
     // Keyboard NONE  → we never steal key focus from the game.
     gtk_layer_init_for_window(GTK_WINDOW(window));
     gtk_layer_set_layer(GTK_WINDOW(window), GTK_LAYER_SHELL_LAYER_OVERLAY);
-    gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_TOP, TRUE);
-    gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_RIGHT, TRUE);
-    gtk_layer_set_margin(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_TOP, 60);
-    gtk_layer_set_margin(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_RIGHT, 20);
+    gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_BOTTOM, TRUE);
+    gtk_layer_set_anchor(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_LEFT, TRUE);
+    gtk_layer_set_margin(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_BOTTOM, 35);
+    gtk_layer_set_margin(GTK_WINDOW(window), GTK_LAYER_SHELL_EDGE_LEFT, 1);
     gtk_layer_set_exclusive_zone(GTK_WINDOW(window), -1);
     gtk_layer_set_keyboard_mode(GTK_WINDOW(window), GTK_LAYER_SHELL_KEYBOARD_MODE_NONE);
 
-    GtkWidget* bar = gtk_label_new(server_time_text().c_str());
+    GtkWidget* bar = gtk_label_new(clock_text().c_str());
     gtk_widget_add_css_class(bar, "overlay-bar");
 
     // Prototype convenience: click the bar to quit. Real input

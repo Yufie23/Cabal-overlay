@@ -6,6 +6,23 @@ All code, identifiers, comments, UI strings, button labels, config keys, and
 commit messages MUST be in English, regardless of the language used in chat
 with the maintainer. The maintainer speaks Spanish; the codebase does not.
 
+## Hard rule: never commit without asking
+
+The maintainer reviews every change before it enters history. NEVER run
+`git commit` (or any git-mutating command) without explicit approval for that
+specific commit. Present the change, let them read the code, then ask.
+
+## Hard rule: no "trust me bro" code
+
+No unchecked type punning. In practice:
+- No C-style casts `(Type)x` and no `reinterpret_cast` in our own code.
+- No blind `void*`/`gpointer` round-trips without a comment stating the
+  contract, and only where a C API (GLib/GTK callbacks) forces them.
+- The `GTK_LABEL(x)`-style macros ARE allowed: they are runtime-checked casts
+  (GObject validates the type and warns on misuse), not blind casts.
+- Prefer `std::optional`, `std::variant`, and strong types over "null means
+  failure" conventions.
+
 ## Environment
 
 - Host OS: CachyOS (Arch-based), Wayland session, KDE Plasma (KWin).
