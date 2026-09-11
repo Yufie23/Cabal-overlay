@@ -35,20 +35,48 @@ constexpr char kApplicationId[] = "dev.cabal.Overlay";
 constexpr char kConfigPath[]    = "config/overlay.toml";
 
 // ── Module state ─────────────────────────────────────────────
-// Exactly one window, one mode flag and one immutable config,
-// owned by the single GtkApplication instance. If the app ever
-// grows more windows, this becomes a small class.
-GtkWindow* g_window = nullptr;
-bool       g_interactive = false;
-AppConfig  g_config;
-
 // The full bar text: clocks on the left, next event countdowns on
+// One window, one mode flag, the current config and the config
+// file monitor — all owned by the single GtkApplication instance.
+// GLib is single-threaded like Node: callbacks (timer, monitor,
+// signals) never run concurrently, so no locks are needed.
+GtkWindow*    g_window = nullptr;
+bool          g_interactive = false;
+AppConfig     g_config;
+GFileMonitor* g_config_monitor = nullptr;
+
 // the right, all derived from one single clock reading so nothing
 // in the bar can disagree with itself.
 std::string bar_text() {
     const auto now = std::chrono::system_clock::now();
     return clock_text(now) + "   " +
            events_text(g_config.schedules, now, g_config.overlay.max_countdowns);
+}
+
+// Live config reload: the file watcher calls this whenever the
+// TOML changes. Unlike startup, a broken file here is NOT fatal:
+// we log the error and keep the previous working config (the bar
+// keeps showing the last good state).
+void reload_config() {
+    try {
+        g_config = load_config(kConfigPath);
+        platform::overlay_apply_config(g_window, g_config.overlay);
+        g_message("config reloaded from %s", kConfigPath);
+    } catch (const std::exception& error) {
+        g_warning("config reload failed, keeping previous config: %s",
+                  error.what());
+    }
+}
+
+// GFileMonitor callback (the C++ equivalent of fs.watch from Node).
+// A single save can surface as several events (changed, done-hint,
+// or created when the editor saves atomically via rename), so we
+// reload on all of them — parsing is microseconds, and reloading
+// twice in a row is idempotent.
+void on_config_file_changed(GFileMonitor*, GFile*, GFile*,
+                            GFileMonitorEvent event, gpointer) {
+    if (event == G_FILE_MONITOR_EVENT_DELETED) return;
+    reload_config();
 }
 
 void set_interactive(bool enabled) {
@@ -108,7 +136,20 @@ void on_activate(GtkApplication* app, gpointer) {
 
     // All Wayland-specific setup is one call behind the platform
     // contract; this file does not know what layer-shell is.
-    platform::overlay_init(g_window);
+    platform::overlay_init(g_window, g_config.overlay);
+
+    // fs.watch, C edition: the overlay re-reads its config whenever
+    // the TOML changes, so editing the file moves/restyles the bar
+    // without restarting. Kept for the app's whole lifetime.
+    auto* config_file = g_file_new_for_path(kConfigPath);
+    g_config_monitor = g_file_monitor_file(config_file, G_FILE_MONITOR_NONE,
+                                           nullptr, nullptr);
+    g_object_unref(config_file);
+    if (g_config_monitor != nullptr)
+        g_signal_connect(g_config_monitor, "changed",
+                         G_CALLBACK(on_config_file_changed), nullptr);
+    else
+        g_warning("could not watch config file %s", kConfigPath);
 
     GtkWidget* bar = gtk_label_new(bar_text().c_str());
     gtk_widget_add_css_class(bar, "overlay-bar");
