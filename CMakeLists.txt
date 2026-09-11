@@ -41,6 +41,7 @@ find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
 pkg_check_modules(LAYER_SHELL REQUIRED IMPORTED_TARGET gtk4-layer-shell-0)
 pkg_check_modules(TOMLPP REQUIRED IMPORTED_TARGET tomlplusplus)
+pkg_check_modules(NLOHMANN REQUIRED IMPORTED_TARGET nlohmann_json)
 
 # Source files. The platform backend is chosen here: today there is
 # only the Wayland one, but the day a Windows build is needed this
@@ -52,6 +53,9 @@ add_executable(cabal-overlay
     src/clock.cpp
     src/config.cpp
     src/schedule.cpp
+    src/state.cpp
+    src/tasks.cpp
+    src/ui.cpp
     src/platform/overlay_wayland.cpp
 )
 
@@ -62,6 +66,7 @@ target_link_libraries(cabal-overlay PRIVATE
     PkgConfig::GTK4
     PkgConfig::LAYER_SHELL
     PkgConfig::TOMLPP
+    PkgConfig::NLOHMANN
 )
 
 # Treat warnings seriously from day one: -Wall -Wextra enable the

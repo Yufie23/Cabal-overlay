@@ -70,6 +70,14 @@ AppConfig load_config(const std::string& path) {
         config.overlay.max_countdowns = overlay["max_countdowns"].value_or(config.overlay.max_countdowns);
     }
 
+    if (const auto* panel = root["panel"].as_table()) {
+        config.panel.visible    = (*panel)["visible"].value_or(config.panel.visible);
+        config.panel.anchor     = (*panel)["anchor"].value_or(config.panel.anchor);
+        config.panel.margin_x   = (*panel)["margin_x"].value_or(config.panel.margin_x);
+        config.panel.margin_y   = (*panel)["margin_y"].value_or(config.panel.margin_y);
+        config.panel.opacity    = (*panel)["opacity"].value_or(config.panel.opacity);
+    }
+
     if (const auto* alarms = root["alarms"].as_table()) {
         config.alarms.enabled         = (*alarms)["enabled"].value_or(config.alarms.enabled);
         config.alarms.volume          = (*alarms)["volume"].value_or(config.alarms.volume);

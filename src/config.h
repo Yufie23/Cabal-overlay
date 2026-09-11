@@ -60,10 +60,22 @@ struct AlarmsConfig {
     bool nation_war = true;
 };
 
+// [panel] section — the goals panel (dungeon counters with progress
+// bars). Same placement fields as OverlayConfig; visible=false removes
+// the panel entirely while keeping the bar.
+struct PanelConfig {
+    bool visible = true;
+    std::string anchor = "right"; // "right" alone = vertically centered
+    int margin_x = 10;
+    int margin_y = 0;
+    double opacity = 0.9;
+};
+
 struct AppConfig {
     std::vector<ScheduleEvent> schedules;
     OverlayConfig overlay;
     AlarmsConfig alarms;
+    PanelConfig panel;
 };
 
 // Parses the TOML file into an AppConfig.

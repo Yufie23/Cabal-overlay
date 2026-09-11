@@ -11,6 +11,12 @@ opacity = 1.0
 theme = "prosperity"        # prosperity | procyon | capella (not wired yet)
 max_countdowns = 3
 
+[panel]
+visible = true
+anchor = "right"            # a single edge (no top/bottom) centers vertically
+margin_x = 10
+opacity = 0.9
+
 [alarms]
 enabled = false
 volume = 50                 # 0-100

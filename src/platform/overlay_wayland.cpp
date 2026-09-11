@@ -14,12 +14,13 @@
 
 namespace {
 
-// Position + fade come from the config now, not from hardcoded
-// constants. Anchor is a string like "bottom-left": we look for
-// each edge keyword independently, so "top", "top-right" or
-// "left-bottom" all parse the same way.
-void apply_position(GtkWindow* window, const OverlayConfig& config) {
-    const std::string& anchor = config.anchor;
+// Anchor is a string like "bottom-left": we look for each edge
+// keyword independently, so "top", "top-right" or "left-bottom"
+// all parse the same way. Anchoring only ONE horizontal edge (e.g.
+// "right") makes the compositor center the surface along the other
+// axis — that is how the goals panel floats centered on the right.
+void apply_position(GtkWindow* window, const platform::Placement& placement) {
+    const std::string& anchor = placement.anchor;
     const bool top    = anchor.find("top")    != std::string::npos;
     const bool bottom = anchor.find("bottom") != std::string::npos;
     const bool left   = anchor.find("left")   != std::string::npos;
@@ -31,36 +32,33 @@ void apply_position(GtkWindow* window, const OverlayConfig& config) {
     gtk_layer_set_anchor(window, GTK_LAYER_SHELL_EDGE_LEFT, left ? TRUE : FALSE);
 
     // Margins only apply to anchored edges; an unanchored edge keeps
-    // margin 0 so the bar stays glued to the screen edge it floats at.
-    gtk_layer_set_margin(window, GTK_LAYER_SHELL_EDGE_LEFT, left ? config.margin_x : 0);
-    gtk_layer_set_margin(window, GTK_LAYER_SHELL_EDGE_RIGHT, right ? config.margin_x : 0);
-    gtk_layer_set_margin(window, GTK_LAYER_SHELL_EDGE_TOP, top ? config.margin_y : 0);
-    gtk_layer_set_margin(window, GTK_LAYER_SHELL_EDGE_BOTTOM, bottom ? config.margin_y : 0);
+    // margin 0 so the surface stays glued to the screen edge it floats at.
+    gtk_layer_set_margin(window, GTK_LAYER_SHELL_EDGE_LEFT, left ? placement.margin_x : 0);
+    gtk_layer_set_margin(window, GTK_LAYER_SHELL_EDGE_RIGHT, right ? placement.margin_x : 0);
+    gtk_layer_set_margin(window, GTK_LAYER_SHELL_EDGE_TOP, top ? placement.margin_y : 0);
+    gtk_layer_set_margin(window, GTK_LAYER_SHELL_EDGE_BOTTOM, bottom ? placement.margin_y : 0);
 }
 
 } // anonymous namespace
 
 namespace platform {
 
-void overlay_init(GtkWindow* window, const OverlayConfig& config) {
+void overlay_init(GtkWindow* window) {
     gtk_layer_init_for_window(window);
 
-    // OVERLAY layer   → drawn above everything, even fullscreen apps.
+    // OVERLAY layer     → drawn above everything, even fullscreen apps.
     // Exclusive zone -1 → "I float on top, don't reserve space for me".
+    // Placement is deliberately NOT applied here: the caller decides
+    // where each surface goes (and can re-apply it on config reload).
     gtk_layer_set_layer(window, GTK_LAYER_SHELL_LAYER_OVERLAY);
     gtk_layer_set_exclusive_zone(window, -1);
-
-    // Calls the declaration from overlay.h (defined below in this
-    // file); the unqualified name would only find it after its
-    // definition, and C++ reads top to bottom.
-    platform::overlay_apply_config(window, config);
 }
 
-void overlay_apply_config(GtkWindow* window, const OverlayConfig& config) {
-    apply_position(window, config);
-    // Fades the whole bar (text included). The CSS alpha on the bar
+void overlay_apply_placement(GtkWindow* window, const Placement& placement) {
+    apply_position(window, placement);
+    // Fades the whole surface (text included). The CSS alpha on the
     // background is a separate, independent translucency knob.
-    gtk_widget_set_opacity(GTK_WIDGET(window), config.opacity);
+    gtk_widget_set_opacity(GTK_WIDGET(window), placement.opacity);
 }
 
 void overlay_set_interactive(GtkWindow* window, bool enabled) {

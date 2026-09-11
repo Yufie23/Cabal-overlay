@@ -1,9 +1,13 @@
 // ─────────────────────────────────────────────────────────────
 // cabal-overlay — entry point
 //
-// A click-through, always-on-top bar floating above every window
-// (including the game), showing the local clock plus live
-// countdowns to the next scheduled game events.
+// A click-through, always-on-top overlay floating above every window
+// (including the game), built from two surfaces:
+//
+//   1. The bar (bottom-left): local clock + countdowns to the next
+//      scheduled game events.
+//   2. The goals panel (right edge, vertically centered): tracked
+//      dungeon tasks with counters and progress bars.
 //
 // Controls:
 //   - Default mode is CLICK-THROUGH: clicks fall through to the game.
@@ -15,7 +19,8 @@
 // This file only orchestrates: it loads the config, wires GTK
 // signals, the D-Bus action and the 1-second timer. Time logic lives
 // in clock.*, schedule math in schedule.*, config parsing in
-// config.*, and everything Wayland-specific behind platform/.
+// config.*, task data in tasks./state., panel rendering in ui.*,
+// and everything Wayland-specific behind platform/.
 // ─────────────────────────────────────────────────────────────
 
 #include <chrono>
@@ -28,6 +33,9 @@
 #include "config.h"
 #include "platform/overlay.h"
 #include "schedule.h"
+#include "state.h"
+#include "tasks.h"
+#include "ui.h"
 
 namespace {
 
@@ -35,18 +43,58 @@ constexpr char kApplicationId[] = "dev.cabal.Overlay";
 constexpr char kConfigPath[]    = "config/overlay.toml";
 
 // ── Module state ─────────────────────────────────────────────
-// One window, one mode flag, the current config and the config
+// Two windows, one mode flag, the current config and the config
 // file monitor — all owned by the single GtkApplication instance.
 // GLib is single-threaded like Node: callbacks (timer, monitor,
 // signals) never run concurrently, so no locks are needed.
 GtkWindow*    g_window = nullptr;
+// Second surface: the goals panel. Created when [panel] visible=true;
+// hidden (not destroyed) whenever there is nothing to track.
+GtkWindow*    g_panel_window = nullptr;
+GtkWidget*    g_goals_panel = nullptr;
 bool          g_interactive = false;
 AppConfig     g_config;
 GFileMonitor* g_config_monitor = nullptr;
+AppState      g_state;
+std::filesystem::path g_state_path;
+// When the state file exists but is unreadable we keep running with
+// an in-memory copy — and refuse to SAVE, so a corrupted file is
+// never overwritten by accident.
+bool          g_state_writable = true;
+// Fingerprint of the task list as last rendered in the panel. The
+// tick compares against goals_signature() and only rebuilds the
+// panel widgets when a task actually changed.
+std::string   g_goals_signature;
 
-// The full bar text: clock on the left, next event countdowns on
-// the right, all derived from one single clock reading so nothing
-// in the bar can disagree with itself.
+// Maps a config section onto the platform Placement struct. Two
+// plain overloads (one per config type) instead of a template: three
+// lines each, and the compiler type-checks every field. The platform
+// contract stays config-agnostic; the conversion happens here, once.
+platform::Placement placement_from(const OverlayConfig& overlay) {
+    return { .anchor = overlay.anchor, .margin_x = overlay.margin_x,
+             .margin_y = overlay.margin_y, .opacity = overlay.opacity };
+}
+
+platform::Placement placement_from(const PanelConfig& panel) {
+    return { .anchor = panel.anchor, .margin_x = panel.margin_x,
+             .margin_y = panel.margin_y, .opacity = panel.opacity };
+}
+
+// Persists the state; errors are logged, never fatal (losing a
+// save must not kill the overlay mid-game).
+void persist_state() {
+    if (!g_state_writable) return;
+    try {
+        save_state(g_state_path, g_state);
+    } catch (const std::exception& error) {
+        g_warning("could not save state: %s", error.what());
+    }
+}
+
+// The full bar text: local clock and next event countdowns, all
+// derived from one single clock reading so nothing in the bar can
+// disagree with itself. Task progress lives in the goals panel, not
+// here — the bar stays short and glanceable.
 std::string bar_text() {
     const auto now = std::chrono::system_clock::now();
     return local_clock_text(now) + "   " +
@@ -60,7 +108,10 @@ std::string bar_text() {
 void reload_config() {
     try {
         g_config = load_config(kConfigPath);
-        platform::overlay_apply_config(g_window, g_config.overlay);
+        platform::overlay_apply_placement(g_window, placement_from(g_config.overlay));
+        if (g_panel_window != nullptr)
+            platform::overlay_apply_placement(g_panel_window,
+                                              placement_from(g_config.panel));
         g_message("config reloaded from %s", kConfigPath);
     } catch (const std::exception& error) {
         g_warning("config reload failed, keeping previous config: %s",
@@ -82,6 +133,8 @@ void on_config_file_changed(GFileMonitor*, GFile*, GFile*,
 void set_interactive(bool enabled) {
     g_interactive = enabled;
     platform::overlay_set_interactive(g_window, enabled);
+    if (g_panel_window != nullptr)
+        platform::overlay_set_interactive(g_panel_window, enabled);
 }
 
 // D-Bus action handler. Signature fixed by GAction: the action
@@ -94,9 +147,36 @@ void on_toggle_interactive(GSimpleAction*, GVariant*, gpointer) {
 // returning G_SOURCE_CONTINUE re-arms the timer for another second;
 // returning G_SOURCE_REMOVE would stop it.
 gboolean on_tick(gpointer label_ptr) {
+    const auto now = std::chrono::system_clock::now();
+    // Reset detection is cheap (two date string comparisons) and
+    // runs every tick: the reset fires exactly at server midnight
+    // even if the app was running, and on the next tick after a
+    // restart if it was closed.
+    if (apply_resets(g_state, now)) {
+        g_message("server reset detected, tasks cleared");
+        persist_state();
+    }
+
     auto* label = GTK_LABEL(label_ptr);
     const std::string text = bar_text();
     gtk_label_set_text(label, text.c_str());
+
+    // Refresh the goals panel only when the task list changed since
+    // the last render (new task, counter bump, reset wiped the list).
+    // The signature comparison is the React "key" idea: a cheap check
+    // per second, a full rebuild only on mismatch.
+    if (g_goals_panel != nullptr) {
+        const std::string signature = goals_signature(g_state);
+        if (signature != g_goals_signature) {
+            g_goals_signature = signature;
+            goals_panel_refresh(g_goals_panel, g_state);
+            const bool has_tasks = !g_state.tasks.all().empty();
+            gtk_widget_set_visible(GTK_WIDGET(g_panel_window), has_tasks);
+            // A surface that comes back from hidden is clickable by
+            // default — re-assert click-through on the panel.
+            platform::overlay_set_interactive(g_panel_window, g_interactive);
+        }
+    }
     return G_SOURCE_CONTINUE;
 }
 
@@ -121,6 +201,41 @@ void apply_css() {
             border-radius: 8px;
             border: 1px solid alpha(#ffd24d, 0.4);
         }
+        .goals-panel {
+            background-color: alpha(black, 0.5);
+            color: #ffd24d;
+            padding: 10px 12px;
+            border-radius: 8px;
+            border: 1px solid alpha(#ffd24d, 0.4);
+            min-width: 240px;
+        }
+        .goal-section {
+            font-family: monospace;
+            font-size: 11px;
+            font-weight: bold;
+            color: alpha(#ffd24d, 0.75);
+            margin-top: 4px;
+        }
+        .goal-section:first-child { margin-top: 0; }
+        .goal-name {
+            font-family: monospace;
+            font-size: 12px;
+        }
+        .goal-count {
+            font-family: monospace;
+            font-size: 12px;
+            color: white;
+        }
+        .goals-panel progressbar trough {
+            background-color: alpha(white, 0.15);
+            border-radius: 3px;
+            min-height: 6px;
+        }
+        .goals-panel progressbar progress {
+            background-color: #ffd24d;
+            border-radius: 3px;
+            min-height: 6px;
+        }
     )css");
     gtk_style_context_add_provider_for_display(
         gdk_display_get_default(),
@@ -134,9 +249,10 @@ void on_activate(GtkApplication* app, gpointer) {
     GtkWidget* window = gtk_application_window_new(app);
     g_window = GTK_WINDOW(window);
 
-    // All Wayland-specific setup is one call behind the platform
+    // All Wayland-specific setup is two calls behind the platform
     // contract; this file does not know what layer-shell is.
-    platform::overlay_init(g_window, g_config.overlay);
+    platform::overlay_init(g_window);
+    platform::overlay_apply_placement(g_window, placement_from(g_config.overlay));
 
     // fs.watch, C edition: the overlay re-reads its config whenever
     // the TOML changes, so editing the file moves/restyles the bar
@@ -159,10 +275,36 @@ void on_activate(GtkApplication* app, gpointer) {
     gtk_widget_add_controller(bar, GTK_EVENT_CONTROLLER(click));
 
     gtk_window_set_child(GTK_WINDOW(window), bar);
+
+    // Second surface: the goals panel, anchored to one vertical edge
+    // only, which makes the compositor center it. Same three platform
+    // calls as the bar — this file never learns what layer-shell is.
+    if (g_config.panel.visible) {
+        GtkWidget* panel_window = gtk_application_window_new(app);
+        g_panel_window = GTK_WINDOW(panel_window);
+        platform::overlay_init(g_panel_window);
+
+        g_goals_panel = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+        gtk_widget_add_css_class(g_goals_panel, "goals-panel");
+        goals_panel_refresh(g_goals_panel, g_state);
+        g_goals_signature = goals_signature(g_state);
+        gtk_window_set_child(g_panel_window, g_goals_panel);
+        platform::overlay_apply_placement(g_panel_window,
+                                          placement_from(g_config.panel));
+
+        // Hidden until there is at least one task to track.
+        gtk_widget_set_visible(panel_window, !g_state.tasks.all().empty());
+        gtk_window_present(g_panel_window);
+    }
+
     gtk_window_present(GTK_WINDOW(window));
 
     // Start in click-through mode: the game keeps the mouse.
     set_interactive(false);
+
+    // Catch up on resets that happened while the app was closed.
+    if (apply_resets(g_state, std::chrono::system_clock::now()))
+        persist_state();
 
     // Tick once per second to refresh clocks and countdowns.
     g_timeout_add(1000, on_tick, bar);
@@ -180,6 +322,18 @@ int main(int argc, char* argv[]) {
     } catch (const std::exception& error) {
         g_printerr("cabal-overlay: %s\n", error.what());
         return 1;
+    }
+
+    // State second. A MISSING state file is fine (first run); a
+    // MALFORMED one keeps us running in memory but disables saving,
+    // so the damaged file stays on disk for manual repair.
+    g_state_path = default_state_path();
+    try {
+        g_state = load_state(g_state_path);
+    } catch (const std::exception& error) {
+        g_state_writable = false;
+        g_warning("state file unreadable (%s); running in memory, "
+                  "will not save", error.what());
     }
 
     // GtkApplication gives us the GLib main loop, a unique D-Bus name
