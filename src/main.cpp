@@ -2,7 +2,7 @@
 // cabal-overlay — entry point
 //
 // A click-through, always-on-top bar floating above every window
-// (including the game), showing server/local clocks plus live
+// (including the game), showing the local clock plus live
 // countdowns to the next scheduled game events.
 //
 // Controls:
@@ -35,7 +35,6 @@ constexpr char kApplicationId[] = "dev.cabal.Overlay";
 constexpr char kConfigPath[]    = "config/overlay.toml";
 
 // ── Module state ─────────────────────────────────────────────
-// The full bar text: clocks on the left, next event countdowns on
 // One window, one mode flag, the current config and the config
 // file monitor — all owned by the single GtkApplication instance.
 // GLib is single-threaded like Node: callbacks (timer, monitor,
@@ -45,11 +44,12 @@ bool          g_interactive = false;
 AppConfig     g_config;
 GFileMonitor* g_config_monitor = nullptr;
 
+// The full bar text: clock on the left, next event countdowns on
 // the right, all derived from one single clock reading so nothing
 // in the bar can disagree with itself.
 std::string bar_text() {
     const auto now = std::chrono::system_clock::now();
-    return clock_text(now) + "   " +
+    return local_clock_text(now) + "   " +
            events_text(g_config.schedules, now, g_config.overlay.max_countdowns);
 }
 

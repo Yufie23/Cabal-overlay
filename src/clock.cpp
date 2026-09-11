@@ -1,20 +1,15 @@
 // ─────────────────────────────────────────────────────────────
-// clock.cpp — time logic. 100% portable: no GTK, no Wayland,
-// nothing platform-specific. This file would compile unchanged
-// on Windows, macOS or a fridge running Linux.
+// clock.cpp — local-time text for the bar. The game itself shows
+// server time natively, so the overlay only tracks local time.
+// 100% portable: no GTK, no Wayland.
 // ─────────────────────────────────────────────────────────────
 
 #include "clock.h"
 
 #include <format>
 
-#include "server_time.h"
-
-std::string clock_text(std::chrono::system_clock::time_point now) {
-    const std::chrono::zoned_time server_now{server_zone(), now};
-
+std::string local_clock_text(std::chrono::system_clock::time_point now) {
     // current_zone() reads the timezone configured in the OS itself.
     const std::chrono::zoned_time local_now{std::chrono::current_zone(), now};
-
-    return std::format("SRV {:%H:%M} | LOC {:%H:%M}", server_now, local_now);
+    return std::format("LOC {:%H:%M}", local_now);
 }

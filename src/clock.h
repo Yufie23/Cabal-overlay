@@ -14,7 +14,6 @@
 #include <chrono>
 #include <string>
 
-// Builds the clock text for the bar: Cabal server time
-// (Europe/Berlin) and the machine's local time, both derived from
-// the SAME `now` so the two clocks can never disagree.
-std::string clock_text(std::chrono::system_clock::time_point now);
+// Builds the local-time text for the bar. The game shows server
+// time natively, so only the machine's own clock is displayed.
+std::string local_clock_text(std::chrono::system_clock::time_point now);
