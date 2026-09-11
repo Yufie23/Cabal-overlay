@@ -1,11 +1,17 @@
 // ─────────────────────────────────────────────────────────────
-// ui.cpp — goals panel rendering
+// ui.cpp — goals panel and add-task form rendering
 //
-// The panel is a vertical GtkBox. Each tracked dungeon becomes a
-// "row": a horizontal line (name left, counter right) plus, when the
-// task has a goal, a GtkProgressBar underneath. Section headers
-// (DAILY, WEEKLY) are emitted only for types that have at least one
-// task, so an all-daily list never shows an empty WEEKLY header.
+// The goals box is a vertical GtkBox. Each tracked dungeon becomes a
+// "row": a horizontal line (name left, counter right, bump buttons)
+// plus, when the task has a goal, a GtkProgressBar underneath.
+// Section headers (DAILY, WEEKLY) are emitted only for types that
+// have at least one task.
+//
+// GTK signals force C-style callbacks with gpointer user data. The
+// contract for every payload below: it is heap-allocated here,
+// attached to its widget with g_object_set_data_full, and deleted by
+// the GDestroyNotify when the widget is destroyed — so a payload
+// never outlives its button, and panel rebuilds cannot dangle.
 // ─────────────────────────────────────────────────────────────
 
 #include "ui.h"
@@ -16,11 +22,131 @@
 
 namespace {
 
-GtkWidget* make_row(const Task& task) {
+// ── Button payloads ──────────────────────────────────────────
+// Each payload carries its own copy of the actions plus the data
+// the callback needs, so the trampoline below needs no globals.
+
+struct BumpPayload {
+    GoalsActions actions;
+    std::string task_id;
+    int delta;
+};
+
+struct TogglePayload {
+    GoalsActions actions;
+    std::string task_id;
+};
+
+struct AddFormPayload {
+    GoalsActions actions;
+    // Owned by main.cpp, alive for the whole app — the form only
+    // reads it to map a dropdown index to a dungeon.
+    const std::vector<Dungeon>* dungeons;
+    GtkWidget* name_entry;
+    GtkWidget* dungeon_dropdown;
+    GtkWidget* type_dropdown;
+    GtkWidget* goal_spin;
+    GtkWidget* form;
+};
+
+template <typename T>
+void delete_payload(gpointer data) {
+    delete static_cast<T*>(data);
+}
+
+void on_bump_clicked(GtkButton* button, gpointer) {
+    // Contract: "cabal-payload" on this button is a BumpPayload
+    // owned by the button (freed by its GDestroyNotify).
+    const auto* payload = static_cast<const BumpPayload*>(
+        g_object_get_data(G_OBJECT(button), "cabal-payload"));
+    payload->actions.bump_count(payload->task_id, payload->delta);
+}
+
+void on_task_toggled(GtkToggleButton* toggle, gpointer) {
+    // Contract: "cabal-payload" on this toggle is a TogglePayload
+    // owned by the toggle.
+    const auto* payload = static_cast<const TogglePayload*>(
+        g_object_get_data(G_OBJECT(toggle), "cabal-payload"));
+    payload->actions.set_completed(payload->task_id,
+                                   gtk_toggle_button_get_active(toggle) == TRUE);
+}
+
+void on_add_task_clicked(GtkButton*, gpointer form_ptr) {
+    // Contract: user_data is the form widget built by
+    // goals_add_form_new; its "cabal-payload" is the AddFormPayload.
+    auto* form = GTK_WIDGET(form_ptr);
+    const auto* payload = static_cast<const AddFormPayload*>(
+        g_object_get_data(G_OBJECT(form), "cabal-payload"));
+
+    // A typed custom name wins over the dropdown selection; the
+    // dropdown is the fast path, the entry the escape hatch.
+    const char* typed = gtk_editable_get_text(GTK_EDITABLE(payload->name_entry));
+    std::string name = typed != nullptr ? typed : "";
+
+    const guint dungeon_index =
+        gtk_drop_down_get_selected(GTK_DROP_DOWN(payload->dungeon_dropdown));
+    if (name.empty() && dungeon_index != GTK_INVALID_LIST_POSITION)
+        name = (*payload->dungeons)[dungeon_index].name;
+
+    const TaskType type = gtk_drop_down_get_selected(GTK_DROP_DOWN(payload->type_dropdown)) == 0
+        ? TaskType::Daily
+        : TaskType::Weekly;
+    const int goal = gtk_spin_button_get_value_as_int(
+        GTK_SPIN_BUTTON(payload->goal_spin));
+
+    if (name.empty()) return; // Nothing to add; keep the form open.
+
+    payload->actions.add_task(type, name, goal);
+    gtk_editable_set_text(GTK_EDITABLE(payload->name_entry), "");
+    gtk_widget_set_visible(payload->form, FALSE);
+}
+
+void on_add_cancel_clicked(GtkButton*, gpointer form_ptr) {
+    gtk_widget_set_visible(GTK_WIDGET(form_ptr), FALSE);
+}
+
+// Prefills the goal spin with the selected dungeon's maxRuns, so
+// picking "Abandoned City" already shows 30 — one less field to type.
+void on_dungeon_selected(GObject* dropdown, GParamSpec*, gpointer user_data) {
+    const auto* payload = static_cast<const AddFormPayload*>(user_data);
+    const guint index = gtk_drop_down_get_selected(GTK_DROP_DOWN(dropdown));
+    if (index == GTK_INVALID_LIST_POSITION) return;
+    gtk_spin_button_set_value(
+        GTK_SPIN_BUTTON(payload->goal_spin),
+        static_cast<double>((*payload->dungeons)[index].max_runs));
+}
+
+// ── Task rows ────────────────────────────────────────────────
+
+GtkWidget* make_bump_button(const GoalsActions& actions, const Task& task,
+                            int delta, const char* label) {
+    auto* button = gtk_button_new_with_label(label);
+    gtk_widget_add_css_class(button, "goal-bump");
+    auto* payload = new BumpPayload{actions, task.id, delta};
+    g_object_set_data_full(G_OBJECT(button), "cabal-payload", payload,
+                           delete_payload<BumpPayload>);
+    g_signal_connect(button, "clicked", G_CALLBACK(on_bump_clicked), nullptr);
+    return button;
+}
+
+GtkWidget* make_toggle_button(const GoalsActions& actions, const Task& task) {
+    auto* toggle = gtk_toggle_button_new_with_label("✓");
+    gtk_widget_add_css_class(toggle, "goal-bump");
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(toggle), task.completed);
+    auto* payload = new TogglePayload{actions, task.id};
+    g_object_set_data_full(G_OBJECT(toggle), "cabal-payload", payload,
+                           delete_payload<TogglePayload>);
+    // Connected AFTER set_active so building the row never fires the
+    // action for the initial state.
+    g_signal_connect(toggle, "toggled", G_CALLBACK(on_task_toggled), nullptr);
+    return toggle;
+}
+
+GtkWidget* make_row(const Task& task, const GoalsActions& actions) {
     auto* row = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
     gtk_widget_add_css_class(row, "goal-row");
 
-    auto* line = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    auto* line = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
 
     auto* name = gtk_label_new(task.name.c_str());
     gtk_widget_add_css_class(name, "goal-name");
@@ -42,6 +168,16 @@ GtkWidget* make_row(const Task& task) {
 
     gtk_box_append(GTK_BOX(line), name);
     gtk_box_append(GTK_BOX(line), count);
+    // Goal tasks get +/- counter buttons; plain tasks get a single
+    // done toggle. In click-through mode none of these receive
+    // clicks — they matter only while interactive.
+    if (task.goal > 0) {
+        gtk_box_append(GTK_BOX(line), make_bump_button(actions, task, -1, "-"));
+        gtk_box_append(GTK_BOX(line), make_bump_button(actions, task, 1, "+"));
+    } else {
+        gtk_box_append(GTK_BOX(line), make_toggle_button(actions, task));
+    }
+
     gtk_box_append(GTK_BOX(row), line);
 
     if (task.goal > 0) {
@@ -58,7 +194,7 @@ GtkWidget* make_row(const Task& task) {
 // Emits the section header on the first task of this type, so a
 // type with zero tasks contributes nothing at all.
 void append_section(GtkWidget* panel, const char* title, TaskType type,
-                    const AppState& state) {
+                    const AppState& state, const GoalsActions& actions) {
     bool first = true;
     for (const Task& task : state.tasks.all()) {
         if (task.type != type) continue;
@@ -69,8 +205,21 @@ void append_section(GtkWidget* panel, const char* title, TaskType type,
             gtk_box_append(GTK_BOX(panel), header);
             first = false;
         }
-        gtk_box_append(GTK_BOX(panel), make_row(task));
+        gtk_box_append(GTK_BOX(panel), make_row(task, actions));
     }
+}
+
+// ── Add-task form ────────────────────────────────────────────
+
+GtkStringList* make_dungeon_model(const std::vector<Dungeon>& dungeons) {
+    // gtk_string_list_new copies every string it is given, so the
+    // model outlives any temporary we build it from.
+    std::vector<const char*> names;
+    names.reserve(dungeons.size());
+    for (const Dungeon& dungeon : dungeons)
+        names.push_back(dungeon.name.c_str());
+    names.push_back(nullptr); // NULL-terminated array, C-style.
+    return gtk_string_list_new(names.data());
 }
 
 } // anonymous namespace
@@ -88,13 +237,89 @@ std::string goals_signature(const AppState& state) {
     return signature;
 }
 
-void goals_panel_refresh(GtkWidget* panel, const AppState& state) {
+void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
+                         const GoalsActions& actions) {
     // Drop every current child, then rebuild from scratch. Widget
     // trees are cheap to create; trying to diff-and-patch GTK nodes
     // would be far more code for zero perceptible gain at this size.
-    while (GtkWidget* child = gtk_widget_get_first_child(panel))
-        gtk_box_remove(GTK_BOX(panel), child);
+    while (GtkWidget* child = gtk_widget_get_first_child(goals_box))
+        gtk_box_remove(GTK_BOX(goals_box), child);
 
-    append_section(panel, "DAILY", TaskType::Daily, state);
-    append_section(panel, "WEEKLY", TaskType::Weekly, state);
+    append_section(goals_box, "DAILY", TaskType::Daily, state, actions);
+    append_section(goals_box, "WEEKLY", TaskType::Weekly, state, actions);
+}
+
+GtkWidget* goals_add_form_new(const GoalsActions& actions,
+                              const std::vector<Dungeon>& dungeons) {
+    auto* form = gtk_box_new(GTK_ORIENTATION_VERTICAL, 6);
+    gtk_widget_add_css_class(form, "goal-form");
+
+    auto* title = gtk_label_new("New task");
+    gtk_widget_add_css_class(title, "goal-form-title");
+    gtk_label_set_xalign(GTK_LABEL(title), 0.0);
+    gtk_box_append(GTK_BOX(form), title);
+
+    // Searchable dropdown over the 86-tracker catalog (GTK 4.10+).
+    auto* dungeon_dropdown = gtk_drop_down_new(
+        G_LIST_MODEL(make_dungeon_model(dungeons)), nullptr);
+    gtk_drop_down_set_enable_search(GTK_DROP_DOWN(dungeon_dropdown), TRUE);
+    gtk_widget_set_hexpand(dungeon_dropdown, TRUE);
+    gtk_box_append(GTK_BOX(form), dungeon_dropdown);
+
+    // Escape hatch for names not in the catalog.
+    auto* name_entry = gtk_entry_new();
+    gtk_widget_add_css_class(name_entry, "goal-form-entry");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(name_entry), "or type a custom name");
+    gtk_box_append(GTK_BOX(form), name_entry);
+
+    auto* options = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+
+    const char* type_names[] = {"Daily", "Weekly", nullptr};
+    auto* type_dropdown = gtk_drop_down_new(
+        G_LIST_MODEL(gtk_string_list_new(type_names)), nullptr);
+    gtk_widget_set_hexpand(type_dropdown, TRUE);
+    gtk_box_append(GTK_BOX(options), type_dropdown);
+
+    // 0 goal = plain checkbox task, same convention as the tracker.
+    // Prefilled with the first catalog entry (the dropdown shows it
+    // even before the user makes an explicit selection).
+    auto* goal_spin = gtk_spin_button_new_with_range(0, 999, 1);
+    gtk_widget_add_css_class(goal_spin, "goal-form-spin");
+    if (!dungeons.empty())
+        gtk_spin_button_set_value(GTK_SPIN_BUTTON(goal_spin),
+                                  static_cast<double>(dungeons.front().max_runs));
+    gtk_box_append(GTK_BOX(options), goal_spin);
+
+    gtk_box_append(GTK_BOX(form), options);
+
+    auto* buttons = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    auto* add_button = gtk_button_new_with_label("Add");
+    gtk_widget_add_css_class(add_button, "goal-form-add");
+    gtk_box_append(GTK_BOX(buttons), add_button);
+    auto* cancel_button = gtk_button_new_with_label("Cancel");
+    gtk_box_append(GTK_BOX(buttons), cancel_button);
+    gtk_box_append(GTK_BOX(form), buttons);
+
+    // One payload for the whole form, freed with it.
+    auto* payload = new AddFormPayload{
+        .actions = actions,
+        .dungeons = &dungeons,
+        .name_entry = name_entry,
+        .dungeon_dropdown = dungeon_dropdown,
+        .type_dropdown = type_dropdown,
+        .goal_spin = goal_spin,
+        .form = form,
+    };
+    g_object_set_data_full(G_OBJECT(form), "cabal-payload", payload,
+                           delete_payload<AddFormPayload>);
+
+    // The "add" handler needs the payload; it reaches it through the
+    // form itself, which is exactly what user_data points to.
+    g_signal_connect(add_button, "clicked", G_CALLBACK(on_add_task_clicked), form);
+    g_signal_connect(cancel_button, "clicked", G_CALLBACK(on_add_cancel_clicked), form);
+    g_signal_connect(dungeon_dropdown, "notify::selected",
+                     G_CALLBACK(on_dungeon_selected), payload);
+
+    gtk_widget_set_visible(form, FALSE);
+    return form;
 }

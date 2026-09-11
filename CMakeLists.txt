@@ -52,6 +52,7 @@ add_executable(cabal-overlay
     src/main.cpp
     src/clock.cpp
     src/config.cpp
+    src/dungeons.cpp
     src/schedule.cpp
     src/state.cpp
     src/tasks.cpp
