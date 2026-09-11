@@ -11,8 +11,10 @@
 // ─────────────────────────────────────────────────────────────
 #pragma once
 
+#include <chrono>
 #include <string>
 
-// Builds the bar text: Cabal server time (Europe/Berlin) and the
-// machine's local time, both derived from one single clock reading.
-std::string clock_text();
+// Builds the clock text for the bar: Cabal server time
+// (Europe/Berlin) and the machine's local time, both derived from
+// the SAME `now` so the two clocks can never disagree.
+std::string clock_text(std::chrono::system_clock::time_point now);

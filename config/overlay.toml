@@ -7,6 +7,7 @@ margin_x = 20
 margin_y = 60
 opacity = 0.85
 theme = "prosperity"        # prosperity | procyon | capella
+max_countdowns = 2
 
 [alarms]
 enabled = false

@@ -6,22 +6,12 @@
 
 #include "clock.h"
 
-#include <chrono>
 #include <format>
 
-namespace {
+#include "server_time.h"
 
-// The game server runs on Europe/Berlin time (CET/CEST). The IANA
-// timezone database handles daylight-saving switches for us.
-constexpr char kServerTimezone[] = "Europe/Berlin";
-
-} // namespace
-
-std::string clock_text() {
-    const auto now = std::chrono::system_clock::now();
-
-    const auto* server_zone = std::chrono::locate_zone(kServerTimezone);
-    const std::chrono::zoned_time server_now{server_zone, now};
+std::string clock_text(std::chrono::system_clock::time_point now) {
+    const std::chrono::zoned_time server_now{server_zone(), now};
 
     // current_zone() reads the timezone configured in the OS itself.
     const std::chrono::zoned_time local_now{std::chrono::current_zone(), now};

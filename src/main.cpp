@@ -2,7 +2,8 @@
 // cabal-overlay — entry point
 //
 // A click-through, always-on-top bar floating above every window
-// (including the game), showing Cabal server time and local time.
+// (including the game), showing server/local clocks plus live
+// countdowns to the next scheduled game events.
 //
 // Controls:
 //   - Default mode is CLICK-THROUGH: clicks fall through to the game.
@@ -11,27 +12,44 @@
 //     the bar returns to click-through mode.
 //   - Close from a terminal: pkill cabal-overlay
 //
-// This file only orchestrates: it wires GTK signals, the D-Bus
-// action and the 1-second timer. Time logic lives in clock.*, and
-// everything Wayland-specific lives in platform/overlay_wayland.cpp
-// behind the platform:: contract (platform/overlay.h).
+// This file only orchestrates: it loads the config, wires GTK
+// signals, the D-Bus action and the 1-second timer. Time logic lives
+// in clock.*, schedule math in schedule.*, config parsing in
+// config.*, and everything Wayland-specific behind platform/.
 // ─────────────────────────────────────────────────────────────
+
+#include <chrono>
+#include <exception>
+#include <string>
 
 #include <gtk/gtk.h>
 
 #include "clock.h"
+#include "config.h"
 #include "platform/overlay.h"
+#include "schedule.h"
 
 namespace {
 
 constexpr char kApplicationId[] = "dev.cabal.Overlay";
+constexpr char kConfigPath[]    = "config/overlay.toml";
 
 // ── Module state ─────────────────────────────────────────────
-// Exactly one window and one mode flag, owned by the single
-// GtkApplication instance. If the app ever grows more windows,
-// this becomes a small class.
+// Exactly one window, one mode flag and one immutable config,
+// owned by the single GtkApplication instance. If the app ever
+// grows more windows, this becomes a small class.
 GtkWindow* g_window = nullptr;
 bool       g_interactive = false;
+AppConfig  g_config;
+
+// The full bar text: clocks on the left, next event countdowns on
+// the right, all derived from one single clock reading so nothing
+// in the bar can disagree with itself.
+std::string bar_text() {
+    const auto now = std::chrono::system_clock::now();
+    return clock_text(now) + "   " +
+           events_text(g_config.schedules, now, g_config.overlay.max_countdowns);
+}
 
 void set_interactive(bool enabled) {
     g_interactive = enabled;
@@ -49,7 +67,7 @@ void on_toggle_interactive(GSimpleAction*, GVariant*, gpointer) {
 // returning G_SOURCE_REMOVE would stop it.
 gboolean on_tick(gpointer label_ptr) {
     auto* label = GTK_LABEL(label_ptr);
-    const std::string text = clock_text();
+    const std::string text = bar_text();
     gtk_label_set_text(label, text.c_str());
     return G_SOURCE_CONTINUE;
 }
@@ -67,7 +85,7 @@ void apply_css() {
     gtk_css_provider_load_from_string(provider, R"css(
         window { background-color: transparent; }
         .overlay-bar {
-            background-color: alpha(black, 0.75);
+            background-color: alpha(black, 0.5);
             color: #ffd24d;
             font-family: monospace;
             font-size: 14px;
@@ -92,7 +110,7 @@ void on_activate(GtkApplication* app, gpointer) {
     // contract; this file does not know what layer-shell is.
     platform::overlay_init(g_window);
 
-    GtkWidget* bar = gtk_label_new(clock_text().c_str());
+    GtkWidget* bar = gtk_label_new(bar_text().c_str());
     gtk_widget_add_css_class(bar, "overlay-bar");
 
     auto* click = gtk_gesture_click_new();
@@ -105,13 +123,24 @@ void on_activate(GtkApplication* app, gpointer) {
     // Start in click-through mode: the game keeps the mouse.
     set_interactive(false);
 
-    // Tick once per second to refresh the clock.
+    // Tick once per second to refresh clocks and countdowns.
     g_timeout_add(1000, on_tick, bar);
 }
 
 } // namespace
 
 int main(int argc, char* argv[]) {
+    // Config first: if the TOML is broken we fail loudly before
+    // opening any window. try/catch is how C++ reports recoverable
+    // failures that must cross many layers — load_config throws,
+    // the one place that knows what to do about it (here) catches.
+    try {
+        g_config = load_config(kConfigPath);
+    } catch (const std::exception& error) {
+        g_printerr("cabal-overlay: %s\n", error.what());
+        return 1;
+    }
+
     // GtkApplication gives us the GLib main loop, a unique D-Bus name
     // (dev.cabal.Overlay) and single-instance behavior for free.
     auto* app = gtk_application_new(kApplicationId, G_APPLICATION_DEFAULT_FLAGS);
