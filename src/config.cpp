@@ -69,6 +69,17 @@ AppConfig load_config(const std::string& path) {
         config.overlay.theme          = overlay["theme"].value_or(config.overlay.theme);
         config.overlay.max_countdowns = overlay["max_countdowns"].value_or(config.overlay.max_countdowns);
     }
+
+    if (const auto* alarms = root["alarms"].as_table()) {
+        config.alarms.enabled         = (*alarms)["enabled"].value_or(config.alarms.enabled);
+        config.alarms.volume          = (*alarms)["volume"].value_or(config.alarms.volume);
+        config.alarms.warn_before_min = (*alarms)["warn_before_min"].value_or(config.alarms.warn_before_min);
+        config.alarms.daily           = (*alarms)["daily"].value_or(config.alarms.daily);
+        config.alarms.weekly          = (*alarms)["weekly"].value_or(config.alarms.weekly);
+        config.alarms.gdg             = (*alarms)["gdg"].value_or(config.alarms.gdg);
+        config.alarms.world_boss      = (*alarms)["world_boss"].value_or(config.alarms.world_boss);
+        config.alarms.nation_war      = (*alarms)["nation_war"].value_or(config.alarms.nation_war);
+    }
     for (const auto& node : *schedule_nodes) {
         const auto* table = node.as_table();
         if (table == nullptr)

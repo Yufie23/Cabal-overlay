@@ -46,9 +46,24 @@ struct OverlayConfig {
     int max_countdowns = 3;
 };
 
+// [alarms] section. Parsed so the struct always reflects the file;
+// the alarms module (sound + notification, roadmap phase 1.5) reads
+// these fields when it lands.
+struct AlarmsConfig {
+    bool enabled = false;
+    int volume = 50;
+    int warn_before_min = 5;
+    bool daily = true;
+    bool weekly = true;
+    bool gdg = true;
+    bool world_boss = true;
+    bool nation_war = true;
+};
+
 struct AppConfig {
     std::vector<ScheduleEvent> schedules;
     OverlayConfig overlay;
+    AlarmsConfig alarms;
 };
 
 // Parses the TOML file into an AppConfig.

@@ -2,12 +2,14 @@
 # All times are server time (Europe/Berlin, CET/CEST handled automatically).
 
 [overlay]
-anchor = "top-right"
-margin_x = 20
-margin_y = 60
-opacity = 0.85
-theme = "prosperity"        # prosperity | procyon | capella
-max_countdowns = 2
+anchor = "bottom-left"      # top | bottom + left | right
+margin_x = 1                # horizontal distance from screen edge
+margin_y = 35               # vertical distance from screen edge
+# Whole-bar fade (text included). 1.0 = fully opaque. The bar's
+# background translucency lives in the CSS, not here.
+opacity = 1.0
+theme = "prosperity"        # prosperity | procyon | capella (not wired yet)
+max_countdowns = 3
 
 [alarms]
 enabled = false
