@@ -78,6 +78,21 @@ AppConfig load_config(const std::string& path) {
         config.panel.opacity    = (*panel)["opacity"].value_or(config.panel.opacity);
     }
 
+    if (const auto* hotkey = root["hotkey"].as_table()) {
+        // Enum modes parse explicitly: an unknown mode string is a
+        // config typo and must fail loudly, not silently disable the
+        // user's only way to click the overlay.
+        if (const auto mode = (*hotkey)["mode"].value<std::string>()) {
+            if (*mode == "external")      config.hotkey.mode = HotkeyMode::External;
+            else if (*mode == "evdev")    config.hotkey.mode = HotkeyMode::Evdev;
+            else if (*mode == "disabled") config.hotkey.mode = HotkeyMode::Disabled;
+            else
+                throw std::runtime_error("unknown hotkey mode: '" + *mode +
+                                         "' (expected external|evdev|disabled)");
+        }
+        config.hotkey.combo = (*hotkey)["combo"].value_or(config.hotkey.combo);
+    }
+
     if (const auto* alarms = root["alarms"].as_table()) {
         config.alarms.enabled         = (*alarms)["enabled"].value_or(config.alarms.enabled);
         config.alarms.volume          = (*alarms)["volume"].value_or(config.alarms.volume);

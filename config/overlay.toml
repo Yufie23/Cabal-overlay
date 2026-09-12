@@ -17,6 +17,29 @@ anchor = "right"            # a single edge (no top/bottom) centers vertically
 margin_x = 10
 opacity = 0.9
 
+# How the global "make overlay clickable" combo reaches the app.
+#
+#   "external" → RECOMMENDED. A desktop shortcut calls the D-Bus
+#                action toggle-interactive. No extra permissions.
+#                KDE: System Settings → Shortcuts → Custom Shortcuts →
+#                New → Command/URL, command:
+#                  gdbus call --session --dest dev.cabal.Overlay \
+#                    --object-path /dev/cabal/Overlay \
+#                    --method org.gtk.Actions.Activate toggle-interactive [] {}
+#   "evdev"    → The app reads /dev/input directly. Works while the
+#                game holds focus, no desktop setup — BUT it needs
+#                your user in the "input" group (sudo usermod -aG
+#                input $USER, re-login). WARNING: that group lets ANY
+#                process running as your user silently read every
+#                keystroke, exactly like a keylogger, forever. The
+#                overlay itself records nothing (verifiable in the
+#                source), but the door stays open for anything else.
+#                See docs/04-hotkey-modes.md before enabling.
+#   "disabled" → No global combo. D-Bus action still callable by hand.
+[hotkey]
+mode = "external"
+combo = "Shift+Space"       # only read in "evdev" mode
+
 [alarms]
 enabled = false
 volume = 50                 # 0-100

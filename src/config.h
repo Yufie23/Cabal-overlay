@@ -71,11 +71,38 @@ struct PanelConfig {
     double opacity = 0.9;
 };
 
+// How the global "toggle interactive" combo reaches the app:
+//   External → a desktop/compositor shortcut calls the D-Bus action
+//              toggle-interactive. Zero extra permissions; the
+//              recommended default. On KDE: System Settings →
+//              Shortcuts → Custom Shortcuts (see docs/04).
+//   Evdev    → the app reads /dev/input itself (platform/hotkey.h).
+//              No desktop setup and works while the game holds focus,
+//              BUT requires "input" group membership — and from then
+//              on ANY process running as your user can silently read
+//              every keystroke. A real, permanent risk: opt in
+//              knowingly. (The future Windows backend would use
+//              RegisterHotKey instead, with no such trade-off.)
+//   Disabled → no global combo at all; the D-Bus action still works
+//              when called manually.
+enum class HotkeyMode {
+    External,
+    Evdev,
+    Disabled,
+};
+
+// [hotkey] section.
+struct HotkeyConfig {
+    HotkeyMode mode = HotkeyMode::External;
+    std::string combo = "Shift+Space"; // only used in Evdev mode
+};
+
 struct AppConfig {
     std::vector<ScheduleEvent> schedules;
     OverlayConfig overlay;
     AlarmsConfig alarms;
     PanelConfig panel;
+    HotkeyConfig hotkey;
 };
 
 // Parses the TOML file into an AppConfig.

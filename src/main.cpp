@@ -33,6 +33,7 @@
 #include "clock.h"
 #include "config.h"
 #include "dungeons.h"
+#include "platform/hotkey.h"
 #include "platform/overlay.h"
 #include "schedule.h"
 #include "state.h"
@@ -180,6 +181,8 @@ void on_config_file_changed(GFileMonitor*, GFile*, GFile*,
 
 void set_interactive(bool enabled) {
     g_interactive = enabled;
+    g_message("interactive mode: %s",
+              enabled ? "ON (overlay clickable)" : "OFF (click-through)");
     platform::overlay_set_interactive(g_window, enabled);
     if (g_panel_window != nullptr)
         platform::overlay_set_interactive(g_panel_window, enabled);
@@ -398,6 +401,30 @@ void on_activate(GtkApplication* app, gpointer) {
 
     // Start in click-through mode: the game keeps the mouse.
     set_interactive(false);
+
+    // Global combo handling, three modes (see [hotkey] in the TOML
+    // and docs/04-hotkey-modes.md). Default is External: the desktop
+    // calls our D-Bus action; the app needs no special permissions.
+    switch (g_config.hotkey.mode) {
+    case HotkeyMode::Evdev:
+        // Reads /dev/input directly: works on any compositor while
+        // the game holds focus. Requires input group membership —
+        // the user opted in via the config, having read the warning.
+        platform::hotkey_start(g_config.hotkey.combo, [] {
+            set_interactive(!g_interactive);
+        });
+        break;
+    case HotkeyMode::External:
+        g_message("hotkey: external mode — bind a desktop shortcut to the "
+                  "D-Bus action, e.g. KDE: System Settings → Shortcuts → "
+                  "Custom Shortcuts → New → Command/URL: gdbus call --session "
+                  "--dest dev.cabal.Overlay --object-path /dev/cabal/Overlay "
+                  "--method org.gtk.Actions.Activate toggle-interactive [] {}");
+        break;
+    case HotkeyMode::Disabled:
+        g_message("hotkey: disabled (no global combo)");
+        break;
+    }
 
     // Catch up on resets that happened while the app was closed.
     if (apply_resets(g_state, std::chrono::system_clock::now()))

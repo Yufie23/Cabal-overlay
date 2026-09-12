@@ -58,6 +58,7 @@ add_executable(cabal-overlay
     src/tasks.cpp
     src/ui.cpp
     src/platform/overlay_wayland.cpp
+    src/platform/hotkey_linux.cpp
 )
 
 # Lets sources write #include "platform/overlay.h" from anywhere.
