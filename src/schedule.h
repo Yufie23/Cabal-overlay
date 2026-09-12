@@ -16,6 +16,13 @@ struct UpcomingEvent {
     std::chrono::system_clock::time_point at;
 };
 
+// The next absolute instant at which `event` fires after `now`,
+// or std::nullopt if the event can never fire. Exposed for the
+// alarms module; everything else should use upcoming_events().
+std::optional<std::chrono::system_clock::time_point>
+next_occurrence(const ScheduleEvent& event,
+                std::chrono::system_clock::time_point now);
+
 // The next `limit` events after `now`, sorted soonest-first.
 // Events that never fire (misconfigured) are silently skipped —
 // they were already rejected at config load, so this is paranoia.

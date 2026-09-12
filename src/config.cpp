@@ -115,6 +115,12 @@ AppConfig load_config(const std::string& path) {
             event.name = *name;
         else
             event.name = event.id;
+        // alarm kind defaults to the id (ids already match the
+        // AlarmsConfig flag names in our TOML).
+        if (const auto alarm = (*table)["alarm"].value<std::string>())
+            event.alarm = *alarm;
+        else
+            event.alarm = event.id;
 
         // "times" is an array for daily events; weekly events use the
         // singular "time". We normalize both into the same vector so

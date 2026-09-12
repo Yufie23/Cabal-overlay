@@ -15,10 +15,14 @@
 
 #include "server_time.h"
 
-namespace {
-
 // The next absolute instant at which `event` fires after `now`,
 // or std::nullopt if the event can never fire.
+//
+// The core idea: convert "now" into server-local time, walk day by
+// day generating candidate instants, and keep the earliest one that
+// is still in the future. Day-walking (instead of clever modular
+// arithmetic) makes the weekly case and the "already passed today"
+// edge case fall out of the same loop.
 std::optional<std::chrono::system_clock::time_point>
 next_occurrence(const ScheduleEvent& event,
                 std::chrono::system_clock::time_point now) {
@@ -51,8 +55,6 @@ next_occurrence(const ScheduleEvent& event,
     }
     return best;
 }
-
-} // namespace
 
 std::vector<UpcomingEvent> upcoming_events(
     const std::vector<ScheduleEvent>& events,

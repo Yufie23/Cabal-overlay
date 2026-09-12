@@ -18,6 +18,11 @@ struct ScheduleEvent {
     std::string id;
     std::string name;
 
+    // Alarm kind for the alarms module — matches a flag in
+    // AlarmsConfig (daily, weekly, gdg, world_boss, nation_war).
+    // Defaults to the event id when the TOML omits it.
+    std::string alarm;
+
     // Times of day when the event fires, as minutes after midnight
     // in SERVER time. A "daily" event simply has several entries.
     std::vector<std::chrono::minutes> times;

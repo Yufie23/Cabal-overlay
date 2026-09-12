@@ -23,13 +23,17 @@
 // and everything Wayland-specific behind platform/.
 // ─────────────────────────────────────────────────────────────
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <exception>
 #include <string>
 #include <vector>
 
 #include <gtk/gtk.h>
+#include <canberra.h>
 
+#include "alarms.h"
 #include "clock.h"
 #include "config.h"
 #include "dungeons.h"
@@ -68,6 +72,11 @@ GFileMonitor* g_config_monitor = nullptr;
 AppState      g_state;
 std::filesystem::path g_state_path;
 std::vector<Dungeon>  g_dungeons;
+// Remembers which event occurrences already got their warning.
+AlarmTracker  g_alarms;
+// The GtkApplication, kept for sending GNotifications from the
+// alarm callback (lives as long as the process).
+GApplication* g_app = nullptr;
 // When the state file exists but is unreadable we keep running with
 // an in-memory copy — and refuse to SAVE, so a corrupted file is
 // never overwritten by accident.
@@ -194,6 +203,54 @@ void on_toggle_interactive(GSimpleAction*, GVariant*, gpointer) {
     set_interactive(!g_interactive);
 }
 
+// Themed notification sound via libcanberra (the freedesktop sound
+// API KDE/GNOME themes implement). The context is created lazily on
+// the first alarm and lives until process exit — destroying it right
+// after ca_context_play() would cancel the queued sample. Playback
+// is asynchronous: the tick never blocks on audio.
+ca_context* g_alarm_sound = nullptr;
+
+void play_alarm_sound() {
+    if (g_config.alarms.volume <= 0) return; // silence is a valid preference
+    if (g_alarm_sound == nullptr &&
+        ca_context_create(&g_alarm_sound) != CA_SUCCESS) {
+        g_alarm_sound = nullptr; // no sound support; alarm still shows
+        return;
+    }
+    // [alarms] volume is a 0-100 percentage; canberra wants a decibel
+    // multiplier per play (0 dB = theme default). Linear amplitude →
+    // dB keeps 100 at "default loudness" and 50 at half amplitude
+    // (-6 dB), like an audio fader.
+    const double percent = std::clamp(g_config.alarms.volume, 0, 100);
+    const double decibels = 20.0 * std::log10(percent / 100.0);
+    const std::string volume = std::format("{:.2f}", decibels);
+    // "bell" is part of the base freedesktop sound set; themes with
+    // richer sets substitute their own sample for it.
+    const int result = ca_context_play(
+        g_alarm_sound, 0,
+        CA_PROP_EVENT_ID, "bell",
+        CA_PROP_EVENT_DESCRIPTION, "Cabal overlay alarm",
+        CA_PROP_CANBERRA_VOLUME, volume.c_str(),
+        nullptr);
+    if (result != CA_SUCCESS)
+        g_warning("alarm sound failed: %s", ca_strerror(result));
+}
+
+// Delivery side of the alarm: a desktop notification through
+// GNotification (GLib, not GTK — composes fine with the app's own
+// windows). The id replaces the previous alarm notification with the
+// same event instead of stacking duplicates in the notification tray.
+void send_alarm_notification(const ScheduleEvent& event, int minutes) {
+    auto* notification = g_notification_new(event.name.c_str());
+    const std::string body = std::format("starts in {} min", minutes);
+    g_notification_set_body(notification, body.c_str());
+    const std::string id = "cabal-alarm-" + event.id;
+    g_application_send_notification(g_app, id.c_str(), notification);
+    g_object_unref(notification);
+    play_alarm_sound();
+    g_message("alarm: %s in %d min", event.name.c_str(), minutes);
+}
+
 // g_timeout_add callback. GLib timers expect this exact signature:
 // returning G_SOURCE_CONTINUE re-arms the timer for another second;
 // returning G_SOURCE_REMOVE would stop it.
@@ -207,6 +264,11 @@ gboolean on_tick(gpointer label_ptr) {
         g_message("server reset detected, tasks cleared");
         persist_state();
     }
+
+    // Warning-window alarms: fires a notification once per event
+    // occurrence when it enters the configured warn-before window.
+    g_alarms.check(g_config.schedules, g_config.alarms, now,
+                   send_alarm_notification);
 
     auto* label = GTK_LABEL(label_ptr);
     const std::string text = bar_text();
@@ -326,6 +388,7 @@ void apply_css() {
 }
 
 void on_activate(GtkApplication* app, gpointer) {
+    g_app = G_APPLICATION(app);
     apply_css();
     GtkWidget* window = gtk_application_window_new(app);
     g_window = GTK_WINDOW(window);
