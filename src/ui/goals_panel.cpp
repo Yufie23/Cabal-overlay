@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// ui.cpp — goals panel and add-task form rendering
+// goals_panel.cpp — goals panel and add-task form rendering
 //
 // The goals box is a vertical GtkBox. Each tracked dungeon becomes a
 // "row": a horizontal line (name left, counter right, bump buttons)
@@ -14,13 +14,13 @@
 // never outlives its button, and panel rebuilds cannot dangle.
 // ─────────────────────────────────────────────────────────────
 
-#include "ui.h"
+#include "goals_panel.h"
 
 #include <cmath>
 #include <format>
 #include <map>
 
-#include "tasks.h"
+#include "model/tasks.h"
 
 namespace {
 

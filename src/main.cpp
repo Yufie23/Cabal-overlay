@@ -33,16 +33,16 @@
 #include <gtk/gtk.h>
 #include <canberra.h>
 
-#include "alarms.h"
-#include "clock.h"
-#include "config.h"
-#include "dungeons.h"
+#include "app//alarms.h"
+#include "time/clock.h"
+#include "app/config.h"
+#include "model/dungeons.h"
 #include "platform/hotkey.h"
 #include "platform/overlay.h"
-#include "schedule.h"
-#include "state.h"
-#include "tasks.h"
-#include "ui.h"
+#include "time/schedule.h"
+#include "model/state.h"
+#include "model/tasks.h"
+#include "ui/goals_panel.h"
 
 namespace {
 

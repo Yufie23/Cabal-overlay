@@ -9,7 +9,7 @@
 
 #include "alarms.h"
 
-#include "schedule.h"
+#include "time/schedule.h"
 
 namespace {
 

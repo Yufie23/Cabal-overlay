@@ -12,7 +12,7 @@
 #include <chrono>
 #include <filesystem>
 
-#include "tasks.h"
+#include "model/tasks.h"
 
 struct AppState {
     TaskList tasks;

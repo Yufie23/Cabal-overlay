@@ -16,8 +16,8 @@
 
 #include <gtk/gtk.h>
 
-#include "dungeons.h"
-#include "state.h"
+#include "model/dungeons.h"
+#include "model/state.h"
 
 // Actions the panel may request. Wired by main.cpp to the app's
 // state; the view layer never touches AppState directly.

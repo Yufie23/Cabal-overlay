@@ -51,14 +51,14 @@ pkg_check_modules(CANBERRA REQUIRED IMPORTED_TARGET libcanberra)
 # of the platform/ contract.
 add_executable(cabal-overlay
     src/main.cpp
-    src/alarms.cpp
-    src/clock.cpp
-    src/config.cpp
-    src/dungeons.cpp
-    src/schedule.cpp
-    src/state.cpp
-    src/tasks.cpp
-    src/ui.cpp
+    src/app/alarms.cpp
+    src/time/clock.cpp
+    src/app/config.cpp
+    src/model/dungeons.cpp
+    src/time/schedule.cpp
+    src/model/state.cpp
+    src/model/tasks.cpp
+    src/ui/goals_panel.cpp
     src/platform/overlay_wayland.cpp
     src/platform/hotkey_linux.cpp
 )

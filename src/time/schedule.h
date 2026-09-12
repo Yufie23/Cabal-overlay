@@ -8,7 +8,7 @@
 #include <string>
 #include <vector>
 
-#include "config.h"
+#include "app/config.h"
 
 // An event together with the absolute moment it will next fire.
 struct UpcomingEvent {
