@@ -11,6 +11,7 @@
 #include <chrono>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 // One scheduled game event (Nation War, Daily Reset, ...).
@@ -115,3 +116,26 @@ struct AppConfig {
 // file is missing or malformed. Config errors are fatal: starting
 // with wrong schedules is worse than not starting at all.
 AppConfig load_config(const std::string& path);
+
+// A writable config value. std::variant is a type-safe union: it
+// holds exactly one of these types and visiting the wrong type is a
+// compile error, not a runtime surprise — no "null means anything".
+using ConfigValue = std::variant<bool, int, double, std::string>;
+
+// Writes one config value back to the TOML file, addressed by dotted
+// key ("overlay.opacity", "alarms.enabled", ...).
+//
+// The write is surgical on purpose: toml++ cannot preserve comments,
+// and this TOML's comments are its documentation — so instead of
+// re-serializing the whole file, exactly one `key = value` line
+// inside its `[section]` is replaced and the rest stays
+// byte-identical. String values must not contain '#' (inline-comment
+// marker) or '"' — true for every key writable through the settings
+// UI today; anything fancier belongs in a hand-edited file.
+//
+// Writes to a temporary file and atomically renames it into place,
+// so the config monitor either sees the old file or the new one,
+// never a half-written one. Throws on unreadable file, unknown key
+// or type mismatch; the settings UI surfaces that as a warning.
+void set_config_value(const std::string& path, const std::string& dotted_key,
+                      const ConfigValue& value);

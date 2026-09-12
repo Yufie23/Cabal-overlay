@@ -1,9 +1,14 @@
 // ─────────────────────────────────────────────────────────────
-// config.cpp — TOML → structs. The only file that includes toml++.
+// config.cpp — TOML → structs, plus the surgical writer below.
+// The only file that includes toml++.
 // ─────────────────────────────────────────────────────────────
 
 #include "config.h"
 
+#include <cctype>
+#include <filesystem>
+#include <format>
+#include <fstream>
 #include <stdexcept>
 
 #include <toml++/toml.hpp>
@@ -141,4 +146,133 @@ AppConfig load_config(const std::string& path) {
         config.schedules.push_back(std::move(event));
     }
     return config;
+}
+
+namespace {
+
+// Renders a ConfigValue as TOML source text.
+std::string render_toml_value(const ConfigValue& value) {
+    return std::visit(
+        [](const auto& item) -> std::string {
+            using T = std::decay_t<decltype(item)>;
+            if constexpr (std::is_same_v<T, bool>)
+                return item ? "true" : "false";
+            else if constexpr (std::is_same_v<T, int>)
+                return std::to_string(item);
+            else if constexpr (std::is_same_v<T, double>) {
+                // Doubles must keep a decimal point: TOML "1.0" and
+                // "1" are different node types, and the loader reads
+                // this key back as floating point.
+                std::string text = std::format("{}", item);
+                if (text.find('.') == std::string::npos)
+                    text += ".0";
+                return text;
+            } else
+                return std::format("\"{}\"", item);
+        },
+        value);
+}
+
+std::size_t skip_spaces(const std::string& line, std::size_t pos) {
+    while (pos < line.size() && (line[pos] == ' ' || line[pos] == '\t'))
+        ++pos;
+    return pos;
+}
+
+// True when `line` opens the TOML section named `section`, i.e. it
+// is "[section]" or "[[section]]" (schedules are never written
+// through here, but both forms are recognized).
+bool opens_section(const std::string& line, const std::string& section) {
+    const std::size_t start = line.find_first_not_of(" \t");
+    if (start == std::string::npos || line[start] != '[')
+        return false;
+    const bool array_table = line.compare(start, 2, "[[") == 0;
+    const std::size_t name_start = start + (array_table ? 2 : 1);
+    const std::size_t close =
+        line.find(array_table ? "]]" : "]", name_start);
+    if (close == std::string::npos)
+        return false;
+    return line.substr(name_start, close - name_start) == section;
+}
+
+} // anonymous namespace
+
+void set_config_value(const std::string& path, const std::string& dotted_key,
+                      const ConfigValue& value) {
+    const auto dot = dotted_key.find('.');
+    if (dot == std::string::npos)
+        throw std::runtime_error("config key must be section-scoped: '" +
+                                 dotted_key + "'");
+    const std::string section = dotted_key.substr(0, dot);
+    const std::string key = dotted_key.substr(dot + 1);
+
+    std::ifstream input(path);
+    if (!input)
+        throw std::runtime_error("cannot open config for writing: " + path);
+    std::vector<std::string> lines;
+    for (std::string line; std::getline(input, line);)
+        lines.push_back(std::move(line));
+
+    bool in_section = false;
+    bool written = false;
+    for (std::string& line : lines) {
+        if (opens_section(line, section)) {
+            in_section = true;
+            continue;
+        }
+        if (const std::size_t start = line.find_first_not_of(" \t");
+            start != std::string::npos && line[start] == '[')
+            in_section = false; // some other section begins
+        if (!in_section)
+            continue;
+
+        // Match `key =` with arbitrary whitespace around both parts.
+        std::size_t pos = skip_spaces(line, 0);
+        const std::size_t key_start = pos;
+        while (pos < line.size() &&
+               (std::isalnum(static_cast<unsigned char>(line[pos])) ||
+                line[pos] == '_'))
+            ++pos;
+        if (line.substr(key_start, pos - key_start) != key)
+            continue;
+        pos = skip_spaces(line, pos);
+        if (pos >= line.size() || line[pos] != '=')
+            continue;
+
+        // Keep a trailing inline comment ("= 0.85   # fade"): our
+        // writable string values never contain '#' (contract in the
+        // header), so the first one reliably marks the comment.
+        const std::size_t hash = line.find('#', pos + 1);
+        const std::string comment =
+            hash == std::string::npos ? "" : line.substr(hash);
+
+        line = line.substr(0, pos + 1) + " " + render_toml_value(value);
+        if (!comment.empty())
+            line += "  " + comment;
+        written = true;
+    }
+
+    if (!written)
+        throw std::runtime_error("key not found in " + path + ": " +
+                                 dotted_key);
+
+    // Atomic publish: the config monitor sees either the whole old
+    // file or the whole new one, never a torn write.
+    const std::string tmp_path = path + ".tmp";
+    {
+        std::ofstream output(tmp_path, std::ios::trunc);
+        if (!output)
+            throw std::runtime_error("cannot write " + tmp_path);
+        for (const std::string& line : lines)
+            output << line << '\n';
+        output.flush();
+        if (!output)
+            throw std::runtime_error("write failed: " + tmp_path);
+    }
+    std::error_code error;
+    std::filesystem::rename(tmp_path, path, error);
+    if (error) {
+        std::filesystem::remove(tmp_path);
+        throw std::runtime_error("atomic rename failed: " + error.message());
+    }
 }

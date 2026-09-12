@@ -33,7 +33,7 @@
 #include <gtk/gtk.h>
 #include <canberra.h>
 
-#include "app//alarms.h"
+#include "app/alarms.h"
 #include "time/clock.h"
 #include "app/config.h"
 #include "model/dungeons.h"
@@ -43,6 +43,7 @@
 #include "model/state.h"
 #include "model/tasks.h"
 #include "ui/goals_panel.h"
+#include "ui/settings_window.h"
 
 namespace {
 
@@ -159,6 +160,77 @@ std::string bar_text() {
            events_text(g_config.schedules, now, g_config.overlay.max_countdowns);
 }
 
+// Builds the whole goals panel surface from the current config:
+// window, rows box, add-task form, footer buttons. Called at
+// startup and whenever a live reload turns [panel] visible on.
+void build_goals_panel(GtkApplication* app) {
+    GtkWidget* panel_window = gtk_application_window_new(app);
+    g_panel_window = GTK_WINDOW(panel_window);
+    platform::overlay_init(g_panel_window);
+
+    // Outer styled box; inside it, the task rows live in their
+    // own box so rebuilds never touch the form or its toggle.
+    g_goals_panel = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_widget_add_css_class(g_goals_panel, "goals-panel");
+    g_goals_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
+    gtk_box_append(GTK_BOX(g_goals_panel), g_goals_box);
+
+    g_goals_form = goals_add_form_new(g_actions, g_dungeons);
+
+    auto* footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+
+    auto* add_task_button = gtk_button_new_with_label("＋ Add task");
+    gtk_widget_add_css_class(add_task_button, "goal-add-toggle");
+    gtk_widget_set_hexpand(add_task_button, TRUE);
+    gtk_widget_set_halign(add_task_button, GTK_ALIGN_FILL);
+    // Capture-less lambda → plain function pointer, so it can
+    // serve as a GTK callback. Reads the global form; no state
+    // of its own.
+    g_signal_connect(add_task_button, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer) {
+                         gtk_widget_set_visible(g_goals_form, TRUE);
+                     }), nullptr);
+
+    auto* settings_button = gtk_button_new_with_label("⚙");
+    gtk_widget_add_css_class(settings_button, "goal-bump");
+    gtk_widget_set_tooltip_text(settings_button, "Open settings");
+    g_signal_connect(settings_button, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer) {
+                         settings::present(GTK_APPLICATION(g_app),
+                                           g_config, kConfigPath);
+                     }), nullptr);
+
+    gtk_box_append(GTK_BOX(footer), add_task_button);
+    gtk_box_append(GTK_BOX(footer), settings_button);
+    gtk_box_append(GTK_BOX(g_goals_panel), footer);
+    gtk_box_append(GTK_BOX(g_goals_panel), g_goals_form);
+
+    gtk_window_set_child(g_panel_window, g_goals_panel);
+    platform::overlay_apply_placement(g_panel_window,
+                                      placement_from(g_config.panel));
+
+    // Initial fill; row visibility is refresh_goals_panel()'s job.
+    g_goals_signature = goals_signature(g_state);
+    refresh_goals_panel();
+    gtk_window_present(g_panel_window);
+}
+
+// Brings the panel surface in line with [panel] visible: builds it
+// when the config enables the panel and it does not exist yet, and
+// destroys it when the config disables it. Every consumer of these
+// globals already nullptr-checks, so tearing the window down is safe.
+void sync_goals_panel(GtkApplication* app) {
+    if (g_config.panel.visible && g_panel_window == nullptr) {
+        build_goals_panel(app);
+    } else if (!g_config.panel.visible && g_panel_window != nullptr) {
+        gtk_window_destroy(g_panel_window);
+        g_panel_window = nullptr;
+        g_goals_panel = nullptr;
+        g_goals_box = nullptr;
+        g_goals_form = nullptr;
+    }
+}
+
 // Live config reload: the file watcher calls this whenever the
 // TOML changes. Unlike startup, a broken file here is NOT fatal:
 // we log the error and keep the previous working config (the bar
@@ -167,6 +239,9 @@ void reload_config() {
     try {
         g_config = load_config(kConfigPath);
         platform::overlay_apply_placement(g_window, placement_from(g_config.overlay));
+        // Create/destroy the panel surface as [panel] visible demands;
+        // a just-built panel already got its placement in build().
+        sync_goals_panel(gtk_window_get_application(g_window));
         if (g_panel_window != nullptr)
             platform::overlay_apply_placement(g_panel_window,
                                               placement_from(g_config.panel));
@@ -201,6 +276,12 @@ void set_interactive(bool enabled) {
 // itself, an optional parameter variant (unused here), user data.
 void on_toggle_interactive(GSimpleAction*, GVariant*, gpointer) {
     set_interactive(!g_interactive);
+}
+
+// Same entry point as the panel's gear button, exported over D-Bus
+// so a desktop shortcut can open the settings too.
+void on_open_settings(GSimpleAction*, GVariant*, gpointer) {
+    settings::present(GTK_APPLICATION(g_app), g_config, kConfigPath);
 }
 
 // Themed notification sound via libcanberra (the freedesktop sound
@@ -423,42 +504,7 @@ void on_activate(GtkApplication* app, gpointer) {
     // Second surface: the goals panel, anchored to one vertical edge
     // only, which makes the compositor center it. Same three platform
     // calls as the bar — this file never learns what layer-shell is.
-    if (g_config.panel.visible) {
-        GtkWidget* panel_window = gtk_application_window_new(app);
-        g_panel_window = GTK_WINDOW(panel_window);
-        platform::overlay_init(g_panel_window);
-
-        // Outer styled box; inside it, the task rows live in their
-        // own box so rebuilds never touch the form or its toggle.
-        g_goals_panel = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-        gtk_widget_add_css_class(g_goals_panel, "goals-panel");
-        g_goals_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-        gtk_box_append(GTK_BOX(g_goals_panel), g_goals_box);
-
-        g_goals_form = goals_add_form_new(g_actions, g_dungeons);
-
-        auto* add_task_button = gtk_button_new_with_label("＋ Add task");
-        gtk_widget_add_css_class(add_task_button, "goal-add-toggle");
-        // Capture-less lambda → plain function pointer, so it can
-        // serve as a GTK callback. Reads the global form; no state
-        // of its own.
-        g_signal_connect(add_task_button, "clicked",
-                         G_CALLBACK(+[](GtkButton*, gpointer) {
-                             gtk_widget_set_visible(g_goals_form, TRUE);
-                         }), nullptr);
-
-        gtk_box_append(GTK_BOX(g_goals_panel), add_task_button);
-        gtk_box_append(GTK_BOX(g_goals_panel), g_goals_form);
-
-        gtk_window_set_child(g_panel_window, g_goals_panel);
-        platform::overlay_apply_placement(g_panel_window,
-                                          placement_from(g_config.panel));
-
-        // Initial fill; visibility is refresh_goals_panel()'s job.
-        g_goals_signature = goals_signature(g_state);
-        refresh_goals_panel();
-        gtk_window_present(g_panel_window);
-    }
+    sync_goals_panel(app);
 
     gtk_window_present(GTK_WINDOW(window));
 
@@ -548,6 +594,14 @@ int main(int argc, char* argv[]) {
         {
             .name           = "toggle-interactive",
             .activate       = on_toggle_interactive,
+            .parameter_type = nullptr,
+            .state          = nullptr,
+            .change_state   = nullptr,
+            .padding        = {0, 0, 0},
+        },
+        {
+            .name           = "open-settings",
+            .activate       = on_open_settings,
             .parameter_type = nullptr,
             .state          = nullptr,
             .change_state   = nullptr,

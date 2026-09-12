@@ -59,6 +59,7 @@ add_executable(cabal-overlay
     src/model/state.cpp
     src/model/tasks.cpp
     src/ui/goals_panel.cpp
+    src/ui/settings_window.cpp
     src/platform/overlay_wayland.cpp
     src/platform/hotkey_linux.cpp
 )
