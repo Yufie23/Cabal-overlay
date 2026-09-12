@@ -16,7 +16,9 @@
 
 #include "ui.h"
 
+#include <cmath>
 #include <format>
+#include <map>
 
 #include "tasks.h"
 
@@ -116,6 +118,68 @@ void on_dungeon_selected(GObject* dropdown, GParamSpec*, gpointer user_data) {
         static_cast<double>((*payload->dungeons)[index].max_runs));
 }
 
+// ── Progress bar animation ───────────────────────────────────
+// Rows are rebuilt from scratch on every change, so a bumped bar
+// would appear at its final value instantly — the ugly "saw". The
+// view remembers the fraction it last rendered per task id and
+// animates each rebuilt bar from that value to the new one. GTK
+// has no CSS transitions; a short GLib timer is the whole engine.
+
+constexpr int kAnimSteps = 10;
+constexpr int kAnimIntervalMs = 30; // ≈300 ms per bump
+
+struct ProgressAnimation {
+    GtkProgressBar* bar;
+    double from;
+    double to;
+    int step = 0;
+    guint source_id = 0;
+};
+
+// Fraction last rendered, keyed by task id. View-local memory — the
+// model (TaskList) has no business knowing what the screen showed.
+std::map<std::string, double> g_last_fractions;
+
+gboolean on_animation_tick(gpointer data) {
+    auto* anim = static_cast<ProgressAnimation*>(data);
+    if (++anim->step >= kAnimSteps) {
+        gtk_progress_bar_set_fraction(anim->bar, anim->to);
+        anim->source_id = 0;
+        return G_SOURCE_REMOVE;
+    }
+    // Ease-in-out cubic: accelerates away from `from`, brakes into
+    // `to`. Being an interpolation between the two endpoints it can
+    // never overshoot the limit — unlike a spring/elastic curve.
+    const double t = static_cast<double>(anim->step) / kAnimSteps;
+    double eased;
+    if (t < 0.5) {
+        eased = 4.0 * t * t * t;
+    } else {
+        const double u = -2.0 * t + 2.0;
+        eased = 1.0 - (u * u * u) / 2.0;
+    }
+    gtk_progress_bar_set_fraction(
+        anim->bar, anim->from + (anim->to - anim->from) * eased);
+    return G_SOURCE_CONTINUE;
+}
+
+void on_animation_bar_destroyed(gpointer data, GObject*) {
+    // The bar was destroyed (panel rebuild, app exit) mid-animation:
+    // kill its timer before freeing the payload. The main loop is
+    // single-threaded, so no tick can race this.
+    auto* anim = static_cast<ProgressAnimation*>(data);
+    if (anim->source_id != 0) g_source_remove(anim->source_id);
+    delete anim;
+}
+
+void animate_progress(GtkProgressBar* bar, double from, double to) {
+    auto* anim = new ProgressAnimation{bar, from, to};
+    anim->source_id = g_timeout_add(kAnimIntervalMs, on_animation_tick, anim);
+    // A weak ref (not a strong one): we must NOT keep the bar alive,
+    // only hear about its death to stop touching it.
+    g_object_weak_ref(G_OBJECT(bar), on_animation_bar_destroyed, anim);
+}
+
 // ── Task rows ────────────────────────────────────────────────
 
 GtkWidget* make_bump_button(const GoalsActions& actions, const Task& task,
@@ -186,9 +250,45 @@ GtkWidget* make_row(const Task& task, const GoalsActions& actions) {
             GTK_PROGRESS_BAR(progress),
             static_cast<double>(task.count) / static_cast<double>(task.goal));
         gtk_widget_set_size_request(progress, 240, 6);
+        // Lets the refresh pass match this bar back to its task for
+        // the bump animation. The string is owned by the widget.
+        g_object_set_data_full(G_OBJECT(progress), "cabal-task-id",
+                               g_strdup(task.id.c_str()), g_free);
         gtk_box_append(GTK_BOX(row), progress);
     }
     return row;
+}
+
+// Depth-first walk of a freshly rebuilt tree: every progress bar
+// animates from the fraction the PREVIOUS render showed for the same
+// task id, and the new render's targets are collected into `rendered`
+// (which becomes the new view memory once the walk finishes).
+void collect_bar_targets(GtkWidget* widget,
+                         std::map<std::string, double>& rendered) {
+    if (GTK_IS_PROGRESS_BAR(widget)) {
+        if (const char* id = static_cast<const char*>(
+                g_object_get_data(G_OBJECT(widget), "cabal-task-id"))) {
+            const double target =
+                gtk_progress_bar_get_fraction(GTK_PROGRESS_BAR(widget));
+            const auto previous = g_last_fractions.find(id);
+            if (previous != g_last_fractions.end() && previous->second != target) {
+                // Reset the fresh bar to the OLD value in the same
+                // rebuild pass — otherwise it paints one frame at
+                // `target`, then snaps back to `from` on the first
+                // tick, which reads as a bounce.
+                gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(widget),
+                                              previous->second);
+                animate_progress(GTK_PROGRESS_BAR(widget),
+                                 previous->second, target);
+            }
+            rendered[id] = target;
+        }
+        return; // a progress bar has no child widgets to visit
+    }
+    for (GtkWidget* child = gtk_widget_get_first_child(widget);
+         child != nullptr;
+         child = gtk_widget_get_next_sibling(child))
+        collect_bar_targets(child, rendered);
 }
 
 // Emits the section header on the first task of this type, so a
@@ -247,6 +347,13 @@ void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
 
     append_section(goals_box, "DAILY", TaskType::Daily, state, actions);
     append_section(goals_box, "WEEKLY", TaskType::Weekly, state, actions);
+
+    // Swap in fresh animation memory: bars animate from the previous
+    // render's fractions, and ids whose tasks were deleted fall out
+    // of the map with this assignment.
+    std::map<std::string, double> rendered;
+    collect_bar_targets(goals_box, rendered);
+    g_last_fractions = std::move(rendered);
 }
 
 GtkWidget* goals_add_form_new(const GoalsActions& actions,
