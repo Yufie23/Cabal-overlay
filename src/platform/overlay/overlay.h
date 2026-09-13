@@ -6,9 +6,9 @@
 // ever calls these functions; each platform provides its own .cpp
 // implementing them:
 //
-//   overlay_wayland.cpp  → wlr-layer-shell (KDE Plasma, wlroots)
-//   overlay_windows.cpp  → WS_EX_LAYERED + WS_EX_TRANSPARENT + topmost
-//                          (not written yet — the door is open)
+//   overlay_wayland.cpp    → wlr-layer-shell (KDE Plasma, wlroots)
+//   overlay_windows.cpp    → WS_EX_TOPMOST + WS_EX_NOACTIVATE +
+//                           WS_EX_TRANSPARENT + WS_EX_LAYERED
 //   (a GNOME/Mutter backend would need a different trick, e.g. an
 //    always-on-top borderless window, since Mutter has no layer-shell)
 //

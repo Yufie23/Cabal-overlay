@@ -19,7 +19,7 @@
 // Same backend-split pattern as overlay.h / pointer.h:
 //
 //   game_watch_x11.cpp     → X11 core protocol polling (this machine)
-//   game_watch_windows.cpp → GetForegroundWindow + FindWindow (future)
+//   game_watch_windows.cpp → EnumWindows title match + GetForegroundWindow
 // ─────────────────────────────────────────────────────────────
 #pragma once
 

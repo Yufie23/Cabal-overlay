@@ -25,7 +25,7 @@
 // gaining focus is reported immediately.
 // ─────────────────────────────────────────────────────────────
 
-#include "game_watch.h"
+#include "platform/game_watch/game_watch.h"
 
 #include <glib.h>
 

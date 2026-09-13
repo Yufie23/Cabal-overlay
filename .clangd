@@ -1,0 +1,19 @@
+# clangd configuration (the language server behind VS Code's C++
+# squiggles). The *_windows.cpp backends only compile on Windows —
+# they are not part of the Linux compilation database, so clangd
+# would flag their windows.h includes as errors here.
+#
+# Two layers for exactly those files:
+#   -ferror-limit=0   The missing windows.h cascade would otherwise
+#                     hit clangd's 19-error cap, which publishes a
+#                     "fatal_too_many_errors" diagnostic that goes
+#                     around the Suppress filter entirely.
+#   Suppress: "*"     hides the remaining (expected) errors.
+# Everything else is checked normally against compile_commands.json.
+If:
+  PathMatch: ".*platform/.*_windows\\.cpp"
+---
+CompileFlags:
+  Add: [-ferror-limit=0]
+Diagnostics:
+  Suppress: "*"

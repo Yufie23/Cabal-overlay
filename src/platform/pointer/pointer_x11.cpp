@@ -18,7 +18,7 @@
 // blind spot covers precisely the clicks we do not care about.
 // ─────────────────────────────────────────────────────────────
 
-#include "pointer.h"
+#include "platform/pointer/pointer.h"
 
 #include <glib.h>
 

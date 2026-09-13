@@ -11,14 +11,14 @@ cmake_minimum_required(VERSION 3.25)
 
 project(cabal-overlay
     VERSION 0.1.0
-    DESCRIPTION "Native Wayland overlay for Cabal Online (private server)"
+    DESCRIPTION "Native game overlay for Cabal Online (private server)"
     LANGUAGES CXX
 )
 
 # C++20 is required: we use std::chrono::zoned_time for the
 # Europe/Berlin server clock and std::format for text output.
 # CXX_EXTENSIONS OFF means "strict standard C++, no GNU extras",
-# which keeps the code portable between g++ and clang++.
+# which keeps the code portable between g++, clang++ and MinGW.
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
@@ -34,26 +34,19 @@ if(NOT CMAKE_BUILD_TYPE)
     set(CMAKE_BUILD_TYPE Debug)
 endif()
 
-# pkg-config is how Linux libraries announce their compiler and
-# linker flags. IMPORTED_TARGET gives us a clean CMake target
-# (PkgConfig::GTK4) instead of raw flag strings.
+# pkg-config is how libraries announce their compiler and linker
+# flags — on Linux from the system, on Windows from MSYS2's
+# MinGW environment (pacman -S mingw-w64-ucrt-x86_64-gtk4 ...).
+# IMPORTED_TARGET gives us a clean CMake target (PkgConfig::GTK4)
+# instead of raw flag strings.
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GTK4 REQUIRED IMPORTED_TARGET gtk4)
-pkg_check_modules(LAYER_SHELL REQUIRED IMPORTED_TARGET gtk4-layer-shell-0)
 pkg_check_modules(TOMLPP REQUIRED IMPORTED_TARGET tomlplusplus)
 pkg_check_modules(NLOHMANN REQUIRED IMPORTED_TARGET nlohmann_json)
-pkg_check_modules(CANBERRA REQUIRED IMPORTED_TARGET libcanberra)
-# X11 client library: the dgcheck pointer sensor reads pointer state
-# through the plain core protocol (XQueryPointer/XQueryKeymap), no
-# extensions, no input devices, no extra permissions.
-pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
 
-# Source files. The platform backend is chosen here: today there is
-# only the Wayland one, but the day a Windows build is needed this
-# becomes `if(WIN32) overlay_windows.cpp else() overlay_wayland.cpp`
-# and NOTHING else in the project changes — that is the whole point
-# of the platform/ contract.
-add_executable(cabal-overlay
+# Source files shared by every platform: the UI, the models and
+# the app logic know nothing about the host OS.
+set(APP_SOURCES
     src/main.cpp
     src/app/alarms.cpp
     src/app/dgcheck.cpp
@@ -65,25 +58,64 @@ add_executable(cabal-overlay
     src/model/tasks.cpp
     src/ui/goals_panel.cpp
     src/ui/settings_window.cpp
-    src/platform/overlay_wayland.cpp
-    src/platform/hotkey_linux.cpp
-    src/platform/pointer_x11.cpp
-    src/platform/game_watch_x11.cpp
 )
+
+# The platform backend is chosen here and NOTHING else in the
+# project changes — that is the whole point of the platform/
+# contract. Linux gets the Wayland layer-shell backend plus the
+# X11 sensors; Windows gets Win32 styles and native API sensors.
+if(WIN32)
+    set(PLATFORM_SOURCES
+        src/platform/overlay/overlay_windows.cpp
+        src/platform/hotkey/hotkey_windows.cpp
+        src/platform/pointer/pointer_windows.cpp
+        src/platform/game_watch/game_watch_windows.cpp
+        src/platform/sound/sound_windows.cpp
+    )
+else()
+    pkg_check_modules(LAYER_SHELL REQUIRED IMPORTED_TARGET gtk4-layer-shell-0)
+    pkg_check_modules(CANBERRA REQUIRED IMPORTED_TARGET libcanberra)
+    # X11 client library: the dgcheck pointer sensor reads pointer
+    # state through the plain core protocol (XQueryPointer/
+    # XQueryKeymap), no extensions, no input devices, no extra
+    # permissions.
+    pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
+    set(PLATFORM_SOURCES
+        src/platform/overlay/overlay_wayland.cpp
+        src/platform/hotkey/hotkey_linux.cpp
+        src/platform/pointer/pointer_x11.cpp
+        src/platform/game_watch/game_watch_x11.cpp
+        src/platform/sound/sound_canberra.cpp
+    )
+endif()
+
+add_executable(cabal-overlay ${APP_SOURCES} ${PLATFORM_SOURCES})
+
+if(WIN32)
+    # GUI subsystem (no console window behind the overlay) and the
+    # Win32 libraries the backends call directly.
+    set_target_properties(cabal-overlay PROPERTIES WIN32_EXECUTABLE TRUE)
+    target_link_libraries(cabal-overlay PRIVATE user32 gdi32 winmm)
+else()
+    target_link_libraries(cabal-overlay PRIVATE
+        PkgConfig::LAYER_SHELL
+        PkgConfig::CANBERRA
+        PkgConfig::X11
+    )
+endif()
 
 # Lets sources write #include "platform/overlay.h" from anywhere.
 target_include_directories(cabal-overlay PRIVATE src)
 
 target_link_libraries(cabal-overlay PRIVATE
     PkgConfig::GTK4
-    PkgConfig::LAYER_SHELL
     PkgConfig::TOMLPP
     PkgConfig::NLOHMANN
-    PkgConfig::CANBERRA
-    PkgConfig::X11
 )
 
 # Treat warnings seriously from day one: -Wall -Wextra enable the
 # common ones, -Wpedantic rejects non-standard C++. Warnings in
 # C++ are usually real bugs the compiler is politely pointing at.
-target_compile_options(cabal-overlay PRIVATE -Wall -Wextra -Wpedantic)
+if(NOT MSVC)
+    target_compile_options(cabal-overlay PRIVATE -Wall -Wextra -Wpedantic)
+endif()

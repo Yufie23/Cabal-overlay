@@ -32,22 +32,47 @@ No unchecked type punning. In practice:
 
 ## Architecture decisions
 
-- The addon is a single native Linux C++ binary. Nothing is ever injected
-  into the game process.
-- Phase 1 (current): native compact overlay (GTK4 + gtk4-layer-shell) powered
-  by data extracted from the clan's HTML tracker — see
+- The addon is a single native C++ binary, one build per OS. Nothing is
+  ever injected into the game process.
+- Phase 1 (current): native compact overlay (GTK4 + gtk4-layer-shell on
+  Linux) powered by data extracted from the clan's HTML tracker — see
   `docs/03-native-integration.md`. The WebKitGTK embedding idea
   (`docs/02-tracker-overlay.md`) was rejected; the tracker is a data source,
   not a UI to embed.
+- Platform split: `platform/<feature>/` holds one contract header plus its
+  backends (e.g. `platform/overlay/overlay.h` + `overlay_wayland.cpp` /
+  `overlay_windows.cpp`); CMake picks sources by `if(WIN32)` — nothing
+  outside `platform/` (and tiny `#ifdef _WIN32` seams in main.cpp/state.cpp)
+  knows which OS it runs on. Windows (10/11) backends:
+  `platform/overlay/overlay_windows.cpp`
+  (WS_POPUP + WS_EX_TOPMOST/NOACTIVATE/TRANSPARENT/LAYERED style surgery on
+  the GTK HWND; click-through = WS_EX_TRANSPARENT toggle; whole-window fade
+  via SetLayeredWindowAttributes — per-pixel CSS alpha has no Win32
+  equivalent without owning the paint pipeline), `platform/pointer/pointer_windows.cpp`
+  (GetCursorPos/GetAsyncKeyState — no X11 blind spot, works globally),
+  `platform/game_watch/game_watch_windows.cpp` (EnumWindows title match + GetForegroundWindow),
+  `platform/hotkey/hotkey_windows.cpp` (RegisterHotKey on a message-only HWND; WM_HOTKEY is
+  dispatched by GTK's own message pump, same thread as the main loop).
+  Known-unverified-on-first-build: `gdk_win32_surface_get_handle` (GTK4
+  API name for the HWND) — first Windows compile will confirm.
+- Building for Windows: inside MSYS2 UCRT64 (`pacman -S
+  mingw-w64-ucrt-x86_64-gtk4 mingw-w64-ucrt-x86_64-tomlplusplus
+  mingw-w64-ucrt-x86_64-nlohmann-json`), same CMakeLists; or cross from
+  Linux with `cmake/mingw-w64-x86_64.toolchain.cmake` once a MinGW
+  dependency sysroot exists. Windows 10 and 11 are the same target
+  (Win32 API set is identical for everything we use).
+- Config/state paths: Linux keeps the repo layout (config/, XDG data dir);
+  Windows uses %APPDATA%\cabal-overlay\ (config seeded from the exe's
+  config\overlay.toml on first run).
 - Input observation (dgcheck counter) uses the X11 core protocol over
-  XWayland (`platform/pointer_x11.cpp`): polling XQueryPointer/XQueryKeymap
+  XWayland (`platform/pointer/pointer_x11.cpp`): polling XQueryPointer/XQueryKeymap
   from a plain X client needs zero privileges (unlike evdev hotkeys). It only
   sees the pointer while it is over X11 surfaces — which is exactly where the
   game's dungeon-end dialog lives. Synthetic-input testing on this machine is
   not possible (XTEST is a no-op under rootless XWayland; uinput devices are
   created but KWin does not route their events), so the press-edge path is
   validated by a real in-game click.
-- Game-focus visibility (`platform/game_watch_x11.cpp`) reuses the same X11
+- Game-focus visibility (`platform/game_watch/game_watch_x11.cpp`) reuses the same X11
   client trick: find the game window via WM_CLASS (Wine sets it to the exe
   name) and poll XGetInputFocus. When a native Wayland window is focused the
   X focus drops to PointerRoot/None, so the overlay hides itself on alt-tab

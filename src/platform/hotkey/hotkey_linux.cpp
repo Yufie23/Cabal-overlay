@@ -16,7 +16,7 @@
 // then re-login). Every failure path logs one actionable warning.
 // ─────────────────────────────────────────────────────────────
 
-#include "hotkey.h"
+#include "platform/hotkey/hotkey.h"
 
 #include <linux/input-event-codes.h>
 #include <linux/input.h>

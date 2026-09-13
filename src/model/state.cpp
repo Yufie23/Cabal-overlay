@@ -10,6 +10,7 @@
 
 #include "state.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <stdexcept>
 
@@ -61,11 +62,19 @@ void from_json(const nlohmann::json& j, Task& task) {
 }
 
 std::filesystem::path default_state_path() {
+#ifdef _WIN32
+    // Per-user profile, same base directory as the config (see
+    // kConfigPath in main.cpp).
+    if (const char* appdata = std::getenv("APPDATA"))
+        return std::filesystem::path{appdata} / "cabal-overlay" / "state.json";
+    throw std::runtime_error("cannot resolve state path: APPDATA is not set");
+#else
     if (const char* xdg = std::getenv("XDG_DATA_HOME"))
         return std::filesystem::path{xdg} / "cabal-overlay" / "state.json";
     if (const char* home = std::getenv("HOME"))
         return std::filesystem::path{home} / ".local/share/cabal-overlay/state.json";
     throw std::runtime_error("cannot resolve state path: HOME is not set");
+#endif
 }
 
 AppState load_state(const std::filesystem::path& path) {

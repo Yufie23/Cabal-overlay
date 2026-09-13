@@ -10,8 +10,8 @@
 //
 // Each platform gets its own implementation:
 //
-//   hotkey_linux.cpp   → /dev/input via evdev + GLib fd sources
-//   hotkey_windows.cpp → RegisterHotKey (not written yet)
+//   hotkey_linux.cpp       → /dev/input via evdev + GLib fd sources
+//   hotkey_windows.cpp   → RegisterHotKey + a message-only window
 //
 // SECURITY NOTE (Linux evdev backend): this capability is identical
 // to what a keylogger uses — reading /dev/input shows every keystroke

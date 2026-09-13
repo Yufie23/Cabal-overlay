@@ -31,18 +31,23 @@
 #include <string>
 #include <vector>
 
+#ifdef _WIN32
+#include <cstdlib>      // std::getenv (APPDATA)
+#include <filesystem>   // per-user config path (see kConfigPath)
+#endif
+
 #include <gtk/gtk.h>
-#include <canberra.h>
 
 #include "app/alarms.h"
 #include "app/dgcheck.h"
 #include "time/clock.h"
 #include "app/config.h"
 #include "model/dungeons.h"
-#include "platform/hotkey.h"
-#include "platform/game_watch.h"
-#include "platform/overlay.h"
-#include "platform/pointer.h"
+#include "platform/hotkey/hotkey.h"
+#include "platform/game_watch/game_watch.h"
+#include "platform/overlay/overlay.h"
+#include "platform/pointer/pointer.h"
+#include "platform/sound/sound.h"
 #include "time/schedule.h"
 #include "model/state.h"
 #include "model/tasks.h"
@@ -52,8 +57,36 @@
 namespace {
 
 constexpr char kApplicationId[] = "dev.cabal.Overlay";
-constexpr char kConfigPath[]    = "config/overlay.toml";
-constexpr char kDungeonsPath[]  = "data/dungeons.json";
+
+// Where the config lives. On Linux it ships in the working
+// directory (the repo layout). On Windows a portable exe cannot
+// write its own directory reliably, so the config goes to the
+// per-user %APPDATA%\cabal-overlay\, seeded from the defaults that
+// ship next to the exe on the first run. Both platforms expose the
+// same type so the call sites stay identical.
+#ifdef _WIN32
+std::string app_data_file(const char* name) {
+    const char* appdata = std::getenv("APPDATA");
+    if (appdata == nullptr) return name; // last resort: cwd
+    const std::filesystem::path target =
+        std::filesystem::path{appdata} / "cabal-overlay" / name;
+    // First run: nothing to edit yet — copy the shipped defaults
+    // (config\overlay.toml next to the exe) into the profile.
+    std::error_code error;
+    std::filesystem::create_directories(target.parent_path(), error);
+    const std::filesystem::path shipped =
+        std::filesystem::path{"config"} / name;
+    if (!std::filesystem::exists(target) &&
+        std::filesystem::exists(shipped))
+        std::filesystem::copy_file(shipped, target, error);
+    return target.string();
+}
+const std::string kConfigPath = app_data_file("overlay.toml");
+constexpr char kDungeonsPath[] = "data\\dungeons.json";
+#else
+const std::string kConfigPath = "config/overlay.toml";
+constexpr char kDungeonsPath[] = "data/dungeons.json";
+#endif
 
 // ── Module state ─────────────────────────────────────────────
 // Two windows, one mode flag, the current config and the config
@@ -335,7 +368,7 @@ void reload_config() {
                 "panel", panel,
                 platform::overlay_apply_placement(g_panel_window, panel));
         }
-        g_message("config reloaded from %s", kConfigPath);
+        g_message("config reloaded from %s", kConfigPath.c_str());
         sync_game_watch();
         apply_overlay_visibility();
     } catch (const std::exception& error) {
@@ -418,37 +451,12 @@ void on_open_settings(GSimpleAction*, GVariant*, gpointer) {
     settings::present(GTK_APPLICATION(g_app), g_config, kConfigPath);
 }
 
-// Themed notification sound via libcanberra (the freedesktop sound
-// API KDE/GNOME themes implement). The context is created lazily on
-// the first alarm and lives until process exit — destroying it right
-// after ca_context_play() would cancel the queued sample. Playback
-// is asynchronous: the tick never blocks on audio.
-ca_context* g_alarm_sound = nullptr;
-
+// Alarm sound, platform backend in platform/sound_*.cpp (canberra
+// on Linux, PlaySound on Windows). Never blocks the tick: both
+// backends enqueue the sample and return.
 void play_alarm_sound() {
     if (g_config.alarms.volume <= 0) return; // silence is a valid preference
-    if (g_alarm_sound == nullptr &&
-        ca_context_create(&g_alarm_sound) != CA_SUCCESS) {
-        g_alarm_sound = nullptr; // no sound support; alarm still shows
-        return;
-    }
-    // [alarms] volume is a 0-100 percentage; canberra wants a decibel
-    // multiplier per play (0 dB = theme default). Linear amplitude →
-    // dB keeps 100 at "default loudness" and 50 at half amplitude
-    // (-6 dB), like an audio fader.
-    const double percent = std::clamp(g_config.alarms.volume, 0, 100);
-    const double decibels = 20.0 * std::log10(percent / 100.0);
-    const std::string volume = std::format("{:.2f}", decibels);
-    // "bell" is part of the base freedesktop sound set; themes with
-    // richer sets substitute their own sample for it.
-    const int result = ca_context_play(
-        g_alarm_sound, 0,
-        CA_PROP_EVENT_ID, "bell",
-        CA_PROP_EVENT_DESCRIPTION, "Cabal overlay alarm",
-        CA_PROP_CANBERRA_VOLUME, volume.c_str(),
-        nullptr);
-    if (result != CA_SUCCESS)
-        g_warning("alarm sound failed: %s", ca_strerror(result));
+    platform::play_alarm_bell(g_config.alarms.volume);
 }
 
 // Delivery side of the alarm: a desktop notification through
@@ -691,7 +699,7 @@ void on_activate(GtkApplication* app, gpointer) {
     // fs.watch, C edition: the overlay re-reads its config whenever
     // the TOML changes, so editing the file moves/restyles the bar
     // without restarting. Kept for the app's whole lifetime.
-    auto* config_file = g_file_new_for_path(kConfigPath);
+    auto* config_file = g_file_new_for_path(kConfigPath.c_str());
     g_config_monitor = g_file_monitor_file(config_file, G_FILE_MONITOR_NONE,
                                            nullptr, nullptr);
     g_object_unref(config_file);
@@ -699,7 +707,7 @@ void on_activate(GtkApplication* app, gpointer) {
         g_signal_connect(g_config_monitor, "changed",
                          G_CALLBACK(on_config_file_changed), nullptr);
     else
-        g_warning("could not watch config file %s", kConfigPath);
+        g_warning("could not watch config file %s", kConfigPath.c_str());
 
     GtkWidget* bar = gtk_label_new(bar_text().c_str());
     gtk_widget_add_css_class(bar, "overlay-bar");
@@ -733,18 +741,28 @@ void on_activate(GtkApplication* app, gpointer) {
     sync_game_watch();
     apply_overlay_visibility();
 
-    // Global combo handling, three modes (see [hotkey] in the TOML
-    // and docs/04-hotkey-modes.md). Default is External: the desktop
-    // calls our D-Bus action; the app needs no special permissions.
+    // Global combo handling (see [hotkey] in the TOML and
+    // docs/04-hotkey-modes.md). On Linux the default is External: the
+    // desktop calls our D-Bus action; the app needs no special
+    // permissions. On Windows there is no D-Bus action to bind, so
+    // any mode except Disabled falls back to the built-in
+    // RegisterHotKey combo.
+    auto toggle = [] { set_interactive(!g_interactive); };
     switch (g_config.hotkey.mode) {
     case HotkeyMode::Evdev:
         // Reads /dev/input directly: works on any compositor while
         // the game holds focus. Requires input group membership —
         // the user opted in via the config, having read the warning.
-        platform::hotkey_start(g_config.hotkey.combo, [] {
-            set_interactive(!g_interactive);
-        });
+        platform::hotkey_start(g_config.hotkey.combo, toggle);
         break;
+#ifdef _WIN32
+    case HotkeyMode::External:
+        // No D-Bus on Windows: "external" degrades to the built-in
+        // combo instead of doing nothing (the least surprising
+        // behavior for a config that shipped from Linux).
+        platform::hotkey_start(g_config.hotkey.combo, toggle);
+        break;
+#else
     case HotkeyMode::External:
         g_message("hotkey: external mode — bind a desktop shortcut to the "
                   "D-Bus action, e.g. KDE: System Settings → Shortcuts → "
@@ -752,6 +770,7 @@ void on_activate(GtkApplication* app, gpointer) {
                   "--dest dev.cabal.Overlay --object-path /dev/cabal/Overlay "
                   "--method org.gtk.Actions.Activate toggle-interactive [] {}");
         break;
+#endif
     case HotkeyMode::Disabled:
         g_message("hotkey: disabled (no global combo)");
         break;

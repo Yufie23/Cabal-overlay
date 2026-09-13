@@ -15,8 +15,8 @@
 //
 // Backend split (same pattern as overlay.h / hotkey.h):
 //
-//   pointer_x11.cpp     → X11 core protocol polling (this machine)
-//   pointer_windows.cpp → GetCursorPos + GetAsyncKeyState (future)
+//   pointer_x11.cpp          → X11 core protocol polling (Linux/XWayland)
+//   pointer_windows.cpp      → GetCursorPos + GetAsyncKeyState polling
 // ─────────────────────────────────────────────────────────────
 #pragma once
 

@@ -6,7 +6,7 @@
 // layer-shell support — that platform would get its own .cpp.
 // ─────────────────────────────────────────────────────────────
 
-#include "overlay.h"
+#include "platform/overlay/overlay.h"
 
 #include <functional>
 #include <string>
