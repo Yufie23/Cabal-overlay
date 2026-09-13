@@ -53,8 +53,8 @@ No unchecked type punning. In practice:
   `platform/game_watch/game_watch_windows.cpp` (EnumWindows title match + GetForegroundWindow),
   `platform/hotkey/hotkey_windows.cpp` (RegisterHotKey on a message-only HWND; WM_HOTKEY is
   dispatched by GTK's own message pump, same thread as the main loop).
-  Known-unverified-on-first-build: `gdk_win32_surface_get_handle` (GTK4
-  API name for the HWND) — first Windows compile will confirm.
+  Verified on the first CI Windows build (MinGW 16.2, GTK 4.24):
+  `gdk_win32_surface_get_handle` is the correct GTK4 API for the HWND.
 - Building for Windows: inside MSYS2 UCRT64 (`pacman -S
   mingw-w64-ucrt-x86_64-gtk4 mingw-w64-ucrt-x86_64-tomlplusplus
   mingw-w64-ucrt-x86_64-nlohmann-json`), same CMakeLists; or cross from
@@ -95,8 +95,8 @@ No unchecked type punning. In practice:
   the supported Windows build: pacman deps, Release build, ntldd-based
   MinGW DLL bundling into a self-contained stage, then the NSIS
   installer (`dist/windows/cabal-overlay.nsi`) when makensis exists.
-  Scripts are written but not yet exercised end-to-end — the first
-  on-Windows build will validate them (same unknowns as above).
+  Exercised end-to-end by the CI Windows job since: compile, ntldd
+  DLL bundling and the NSIS installer all work from a clean MSYS2.
 - `README.md` is the user-facing doc (requirements, install,
   first-run setup, uninstall). Keep it in sync with reality.
 - `.github/workflows/build.yml`: every push to main builds the Windows
