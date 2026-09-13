@@ -97,12 +97,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: signed/cabal-overlay-*-setup.exe
+          body: "Windows shows a SmartScreen warning? Antivirus complaining? Read the [FAQ](https://github.com/Yufie23/Cabal-overlay/blob/main/FAQ.md) first."
 
       - name: Publish unsigned installer on tag (pre-SignPath fallback)
         if: startsWith(github.ref, 'refs/tags/v') && env.SIGNPATH_TOKEN == ''
         uses: softprops/action-gh-release@v2
         with:
           files: dist/out/cabal-overlay-*-setup.exe
+          body: "Windows shows a SmartScreen warning? Antivirus complaining? Read the [FAQ](https://github.com/Yufie23/Cabal-overlay/blob/main/FAQ.md) first."
 
   linux:
     name: Linux tarball

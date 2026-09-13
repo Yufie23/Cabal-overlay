@@ -11,6 +11,10 @@ sends input to it. The only things it observes are your own screen
 position and key state (for its own click counter) and which window
 currently has focus (to hide itself when you alt-tab away from the game).
 
+**New here? Read the [FAQ](FAQ.md)** — it covers the Windows SmartScreen
+warning, antivirus false positives, and what this tool does and does
+not do.
+
 ## Features
 
 - **Bar** (bottom-left): local clock + countdown to the next scheduled
