@@ -50,7 +50,7 @@ namespace {
 // Lives in GObject data, freed by the destroy notify.
 struct Win32Overlay {
     GtkWindow* window;
-    Placement placement;
+    platform::Placement placement; // contract type lives in namespace platform
     bool interactive = false;
     bool realized = false;
 

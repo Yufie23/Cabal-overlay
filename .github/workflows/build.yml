@@ -76,7 +76,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build pkg-config meson \
             libgtk-4-dev libcanberra-dev libx11-dev \
-            libtomlplusplus-dev nlohmann-json3-dev
+            libtomlplusplus-dev nlohmann-json3-dev \
+            libgobject-introspection-dev libwayland-bin
 
       - name: Build gtk4-layer-shell from source
         run: |
