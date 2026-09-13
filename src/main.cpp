@@ -181,6 +181,28 @@ std::string bar_text() {
            events_text(g_config.schedules, now, g_config.overlay.max_countdowns);
 }
 
+// Persists a dragged position: the anchor becomes "custom" (absolute
+// top-left margins) unless it already is, then the margins. Each
+// set_config_value rewrites one line and the config monitor applies
+// the result — same values, so the surface does not jump.
+void save_dragged_placement(const char* section, int margin_x, int margin_y) {
+    try {
+        const std::string name = section;
+        const bool already_custom =
+            (name == "overlay" && g_config.overlay.anchor == "custom") ||
+            (name == "panel" && g_config.panel.anchor == "custom");
+        if (!already_custom)
+            set_config_value(kConfigPath, name + ".anchor",
+                             std::string("custom"));
+        set_config_value(kConfigPath, name + ".margin_x", margin_x);
+        set_config_value(kConfigPath, name + ".margin_y", margin_y);
+        g_message("%s dragged to custom position (%d, %d)", section,
+                  margin_x, margin_y);
+    } catch (const std::exception& error) {
+        g_warning("could not save dragged position: %s", error.what());
+    }
+}
+
 // Builds the whole goals panel surface from the current config:
 // window, rows box, add-task form, footer buttons. Called at
 // startup and whenever a live reload turns [panel] visible on.
@@ -188,6 +210,14 @@ void build_goals_panel(GtkApplication* app) {
     GtkWidget* panel_window = gtk_application_window_new(app);
     g_panel_window = GTK_WINDOW(panel_window);
     platform::overlay_init(g_panel_window);
+    // Drag-to-move like the clock bar; a tap on the panel does
+    // nothing (unlike the bar, it is not a "done" button).
+    platform::overlay_enable_drag(
+        g_panel_window,
+        [](int margin_x, int margin_y) {
+            save_dragged_placement("panel", margin_x, margin_y);
+        },
+        [] {});
 
     // Outer styled box; inside it, the task rows live in their
     // own box so rebuilds never touch the form or its toggle.
@@ -252,6 +282,27 @@ void sync_goals_panel(GtkApplication* app) {
     }
 }
 
+// The platform kept the surface in place when an anchor switched
+// from "custom" to an edge by re-basing the margins; mirror that into
+// the TOML so the file describes the screen. The extra reload this
+// write triggers is a no-op (the values now match).
+void persist_adjusted_margins(const std::string& section,
+                              const platform::Placement& requested,
+                              const platform::Placement& applied) {
+    if (applied.margin_x == requested.margin_x &&
+        applied.margin_y == requested.margin_y)
+        return;
+    try {
+        set_config_value(kConfigPath, section + ".margin_x", applied.margin_x);
+        set_config_value(kConfigPath, section + ".margin_y", applied.margin_y);
+        g_message("%s margins re-based for anchor \"%s\": (%d, %d)",
+                  section.c_str(), applied.anchor.c_str(), applied.margin_x,
+                  applied.margin_y);
+    } catch (const std::exception& error) {
+        g_warning("could not persist adjusted margins: %s", error.what());
+    }
+}
+
 // Live config reload: the file watcher calls this whenever the
 // TOML changes. Unlike startup, a broken file here is NOT fatal:
 // we log the error and keep the previous working config (the bar
@@ -259,13 +310,18 @@ void sync_goals_panel(GtkApplication* app) {
 void reload_config() {
     try {
         g_config = load_config(kConfigPath);
-        platform::overlay_apply_placement(g_window, placement_from(g_config.overlay));
+        const auto bar = placement_from(g_config.overlay);
+        persist_adjusted_margins(
+            "overlay", bar, platform::overlay_apply_placement(g_window, bar));
         // Create/destroy the panel surface as [panel] visible demands;
         // a just-built panel already got its placement in build().
         sync_goals_panel(gtk_window_get_application(g_window));
-        if (g_panel_window != nullptr)
-            platform::overlay_apply_placement(g_panel_window,
-                                              placement_from(g_config.panel));
+        if (g_panel_window != nullptr) {
+            const auto panel = placement_from(g_config.panel);
+            persist_adjusted_margins(
+                "panel", panel,
+                platform::overlay_apply_placement(g_panel_window, panel));
+        }
         g_message("config reloaded from %s", kConfigPath);
     } catch (const std::exception& error) {
         g_warning("config reload failed, keeping previous config: %s",
@@ -467,11 +523,9 @@ gboolean on_tick(gpointer label_ptr) {
     return G_SOURCE_CONTINUE;
 }
 
-void on_bar_clicked(GtkGestureClick*, gint, gdouble, gdouble, gpointer) {
-    // Clicks only reach the bar while interactive, so a click here
-    // means "I'm done": hand the mouse back to the game.
-    set_interactive(false);
-}
+// Handled by the drag gesture's tap detection (overlay_enable_drag):
+// a press-and-release without movement on the bar means "I'm done" —
+// hand the mouse back to the game. Dragging the bar moves it instead.
 
 // GTK styling works with CSS, same idea as the web tracker but
 // applied to native widgets instead of DOM elements.
@@ -592,12 +646,17 @@ void on_activate(GtkApplication* app, gpointer) {
 
     GtkWidget* bar = gtk_label_new(bar_text().c_str());
     gtk_widget_add_css_class(bar, "overlay-bar");
-
-    auto* click = gtk_gesture_click_new();
-    g_signal_connect(click, "pressed", G_CALLBACK(on_bar_clicked), app);
-    gtk_widget_add_controller(bar, GTK_EVENT_CONTROLLER(click));
-
     gtk_window_set_child(GTK_WINDOW(window), bar);
+
+    // Drag-to-move: while interactive, grabbing the bar moves the
+    // surface (persisted as an anchor = "custom" position); a plain
+    // tap means "done, give the mouse back to the game".
+    platform::overlay_enable_drag(
+        g_window,
+        [](int margin_x, int margin_y) {
+            save_dragged_placement("overlay", margin_x, margin_y);
+        },
+        [] { set_interactive(false); });
 
     // Second surface: the goals panel, anchored to one vertical edge
     // only, which makes the compositor center it. Same three platform

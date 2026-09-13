@@ -16,9 +16,11 @@
 
 #include "goals_panel.h"
 
+#include <algorithm>
 #include <cmath>
 #include <format>
 #include <map>
+#include <set>
 
 #include "model/tasks.h"
 
@@ -266,6 +268,75 @@ void animate_progress(GtkProgressBar* bar, double from, double to) {
     g_object_weak_ref(G_OBJECT(bar), on_animation_bar_destroyed, anim);
 }
 
+// ── Fade-out for completed tasks ─────────────────────────────
+// Completing a task drops its row on the next rebuild — an abrupt
+// pop. Instead the row lingers as a "ghost": a frozen snapshot that
+// fades to invisible over kFadeMs and is then detached. The snapshot
+// survives both model changes and panel rebuilds: every rebuild
+// re-creates the ghost widget from the map, so nothing can kill the
+// animation halfway. View-layer memory only — the model knows
+// nothing about it.
+
+constexpr int kFadeMs = 300;
+
+struct FadingRow {
+    Task snapshot;               // copied: the model may delete the task
+    gint64 started_us = 0;       // g_get_monotonic_time() base
+    GtkWidget* widget = nullptr; // current ghost instance, if built
+    GtkWidget* box = nullptr;    // parent box, to detach at the end
+};
+
+std::map<std::string, FadingRow> g_fading;
+std::set<std::string> g_visible_last; // ids rendered in the last refresh
+guint g_fade_ticker = 0;
+
+double fade_fraction(const FadingRow& row) {
+    const gint64 elapsed_us = g_get_monotonic_time() - row.started_us;
+    return std::clamp(1.0 - static_cast<double>(elapsed_us) / (kFadeMs * 1000),
+                      0.0, 1.0);
+}
+
+void on_ghost_destroyed(gpointer data, GObject*) {
+    // Contract: data is a FadingRow owned by the g_fading map; the
+    // ghost widget died (panel rebuild) — forget the dangling pointer.
+    static_cast<FadingRow*>(data)->widget = nullptr;
+}
+
+void detach_ghost(FadingRow& row) {
+    if (row.widget == nullptr) return;
+    // Unregister the weak ref BEFORE removing: the removal destroys
+    // the widget, and no callback may run once the map entry is gone.
+    g_object_weak_unref(G_OBJECT(row.widget), on_ghost_destroyed, &row);
+    GtkWidget* widget = row.widget;
+    row.widget = nullptr;
+    gtk_box_remove(GTK_BOX(row.box), widget);
+}
+
+gboolean on_fade_tick(gpointer) {
+    for (auto it = g_fading.begin(); it != g_fading.end();) {
+        FadingRow& row = it->second;
+        const double fraction = fade_fraction(row);
+        if (fraction <= 0.0) {
+            detach_ghost(row);
+            it = g_fading.erase(it);
+            continue;
+        }
+        if (row.widget != nullptr)
+            gtk_widget_set_opacity(row.widget, fraction);
+        ++it;
+    }
+    if (g_fading.empty()) {
+        g_fade_ticker = 0;
+        return G_SOURCE_REMOVE;
+    }
+    return G_SOURCE_CONTINUE;
+}
+
+void ensure_fade_ticker() {
+    if (g_fade_ticker == 0)
+        g_fade_ticker = g_timeout_add(30, on_fade_tick, nullptr);
+}
+
 // ── Task rows ────────────────────────────────────────────────
 
 // A task is done when flagged, or when its counter reached its goal
@@ -476,6 +547,29 @@ void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
         gtk_widget_add_controller(goals_box, GTK_EVENT_CONTROLLER(drop));
     }
 
+    // Tasks that completed since the last render get a ghost instead
+    // of vanishing (they were visible, they are done now).
+    for (const Task& task : state.tasks.all()) {
+        if (!row_is_done(task)) continue;
+        if (g_visible_last.count(task.id) == 0) continue;
+        if (g_fading.count(task.id) != 0) continue;
+        g_fading[task.id] = FadingRow{ .snapshot = task,
+                                       .started_us = g_get_monotonic_time(),
+                                       .widget = nullptr,
+                                       .box = goals_box };
+    }
+    // A daily/weekly reset may revive a task while its ghost is still
+    // fading: cancel the ghost and let the real row render.
+    for (auto it = g_fading.begin(); it != g_fading.end();) {
+        const Task* revived = state.tasks.find(it->first);
+        if (revived != nullptr && !row_is_done(*revived)) {
+            detach_ghost(it->second);
+            it = g_fading.erase(it);
+        } else {
+            ++it;
+        }
+    }
+
     // Drop every current child, then rebuild from scratch. Widget
     // trees are cheap to create; trying to diff-and-patch GTK nodes
     // would be far more code for zero perceptible gain at this size.
@@ -484,6 +578,23 @@ void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
 
     append_section(goals_box, "DAILY", TaskType::Daily, state, actions);
     append_section(goals_box, "WEEKLY", TaskType::Weekly, state, actions);
+
+    // Ghosts re-create from the snapshot on every rebuild, so a
+    // rebuild mid-fade restarts the widget but not the clock.
+    for (auto& entry : g_fading) {
+        FadingRow& row = entry.second;
+        GtkWidget* ghost = make_row(row.snapshot, actions);
+        gtk_widget_set_sensitive(ghost, FALSE); // leaving: no input
+        gtk_widget_set_opacity(ghost, fade_fraction(row));
+        row.widget = ghost;
+        g_object_weak_ref(G_OBJECT(ghost), on_ghost_destroyed, &row);
+        gtk_box_append(GTK_BOX(goals_box), ghost);
+    }
+    if (!g_fading.empty()) ensure_fade_ticker();
+
+    g_visible_last.clear();
+    for (const Task& task : state.tasks.all())
+        if (!row_is_done(task)) g_visible_last.insert(task.id);
 
     // Swap in fresh animation memory: bars animate from the previous
     // render's fractions, and ids whose tasks were deleted fall out

@@ -24,6 +24,7 @@
 // ─────────────────────────────────────────────────────────────
 #pragma once
 
+#include <functional>
 #include <string>
 
 #include <gtk/gtk.h>
@@ -34,6 +35,9 @@ namespace platform {
 // `anchor` holds edge keywords ("right", "bottom-left", ...);
 // anchoring to a single horizontal edge (e.g. just "right") lets
 // the compositor center the surface along the other axis.
+// The special value "custom" pins the surface to an absolute
+// position: anchored top-left, margins = x/y from the screen corner
+// (set by dragging the window, or by hand).
 struct Placement {
     std::string anchor;
     int margin_x = 0;
@@ -49,10 +53,26 @@ void overlay_init(GtkWindow* window);
 
 // Positions and fades a window. Used at startup and by live config
 // reload (edit the TOML, watch the surface move without restarting).
-void overlay_apply_placement(GtkWindow* window, const Placement& placement);
+// Returns the placement actually applied: when the surface was on a
+// "custom" anchor and the new one is an edge, the absolute margins
+// are converted to edge distances so the surface does not jump — the
+// caller may persist the result so the file matches the screen.
+Placement overlay_apply_placement(GtkWindow* window, Placement placement);
 
 // enabled = false → click-through: pointer input falls to the app
 // below (the game). enabled = true → the overlay is clickable.
 void overlay_set_interactive(GtkWindow* window, bool enabled);
+
+// Enables drag-to-move (effective only while the surface is
+// interactive — in click-through mode the events go to the game).
+// At drag start the surface switches to "custom" positioning
+// (anchored top-left, margins = absolute position), follows the
+// pointer live, and `on_moved` reports the final margins so the app
+// persists them. `on_tap` (press-and-release under ~3 px) lets the
+// app distinguish "user clicked the window" from "user moved it" —
+// an empty function is fine for windows without click behavior.
+void overlay_enable_drag(GtkWindow* window,
+                         std::function<void(int margin_x, int margin_y)> on_moved,
+                         std::function<void()> on_tap);
 
 } // namespace platform

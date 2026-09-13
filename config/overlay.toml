@@ -2,9 +2,13 @@
 # All times are server time (Europe/Berlin, CET/CEST handled automatically).
 
 [overlay]
-anchor = "bottom-left"      # top | bottom + left | right
-margin_x = 0  # horizontal distance from screen edge
-margin_y = 35               # vertical distance from screen edge
+# anchor: edge keywords ("top-left", "bottom-right", "right", ...) or
+# "custom" for a free position. With "custom" the margins are the
+# absolute x/y offset from the TOP-LEFT corner of the screen (drag the
+# bar while the overlay is interactive and it saves itself here).
+anchor = "custom"
+margin_x = 351  # horizontal distance from screen edge (from corner if custom)
+margin_y = 1009  # vertical distance from screen edge (from corner if custom)
 # Whole-bar fade (text included). 1.0 = fully opaque. The bar's
 # background translucency lives in the CSS, not here.
 opacity = 1.0
@@ -13,8 +17,11 @@ max_countdowns = 1
 
 [panel]
 visible = true
-anchor = "right"            # a single edge (no top/bottom) centers vertically
-margin_x = 10
+anchor = "custom"  # a single edge (no top/bottom) centers vertically
+# "custom" works here too: drag the panel while interactive and it
+# saves its absolute position in margin_x/margin_y (see [overlay]).
+margin_x = 1238
+margin_y = 792
 opacity = 0.9
 
 # How the global "make overlay clickable" combo reaches the app.

@@ -189,19 +189,22 @@ int index_of(const char* const* options, int n, const std::string& value) {
 GtkWidget* build_bar_page(const AppConfig& config,
                           const std::string& path) {
     auto* grid = GTK_GRID(make_page_grid());
+    // "custom" = free position (drag the window, or set margins as
+    // absolute x/y from the top-left corner — margins go up to 4000
+    // so 4K screens are reachable, not just this 1080p one).
     static const char* kAnchors[] = {
-        "top-left", "top-right", "bottom-left", "bottom-right",
+        "top-left", "top-right", "bottom-left", "bottom-right", "custom",
     };
     int row = 0;
     add_row(grid, row++, "Position",
-            make_dropdown(path, "overlay.anchor", kAnchors, 4,
-                          index_of(kAnchors, 4, config.overlay.anchor)));
+            make_dropdown(path, "overlay.anchor", kAnchors, 5,
+                          index_of(kAnchors, 5, config.overlay.anchor)));
     add_row(grid, row++, "Horizontal margin",
             make_spin(path, "overlay.margin_x", config.overlay.margin_x,
-                      0, 400));
+                      0, 4000));
     add_row(grid, row++, "Vertical margin",
             make_spin(path, "overlay.margin_y", config.overlay.margin_y,
-                      0, 400));
+                      0, 4000));
     add_row(grid, row++, "Opacity",
             make_scale(path, "overlay.opacity", config.overlay.opacity,
                        0.1, 1.0, 2));
@@ -216,17 +219,17 @@ GtkWidget* build_panel_page(const AppConfig& config,
     auto* grid = GTK_GRID(make_page_grid());
     static const char* kAnchors[] = {
         "left", "right", "top-left", "top-right", "bottom-left",
-        "bottom-right",
+        "bottom-right", "custom",
     };
     int row = 0;
     add_row(grid, row++, "Show goals panel",
             make_switch(path, "panel.visible", config.panel.visible));
     add_row(grid, row++, "Position",
-            make_dropdown(path, "panel.anchor", kAnchors, 6,
-                          index_of(kAnchors, 6, config.panel.anchor)));
+            make_dropdown(path, "panel.anchor", kAnchors, 7,
+                          index_of(kAnchors, 7, config.panel.anchor)));
     add_row(grid, row++, "Horizontal margin",
             make_spin(path, "panel.margin_x", config.panel.margin_x,
-                      0, 400));
+                      0, 4000));
     add_row(grid, row++, "Opacity",
             make_scale(path, "panel.opacity", config.panel.opacity,
                        0.1, 1.0, 2));

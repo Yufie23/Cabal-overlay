@@ -223,17 +223,36 @@ void set_config_value(const std::string& path, const std::string& dotted_key,
         lines.push_back(std::move(line));
 
     bool in_section = false;
+    bool section_seen = false;
     bool written = false;
-    for (std::string& line : lines) {
+    // Where a missing key would be inserted: after the last line of
+    // the target section (defaults to EOF for a trailing section).
+    std::size_t insert_at = lines.size();
+    for (std::size_t i = 0; i < lines.size(); ++i) {
+        std::string& line = lines[i];
         if (opens_section(line, section)) {
             in_section = true;
+            section_seen = true;
+            insert_at = i + 1;
             continue;
         }
         if (const std::size_t start = line.find_first_not_of(" \t");
-            start != std::string::npos && line[start] == '[')
+            start != std::string::npos && line[start] == '[') {
             in_section = false; // some other section begins
+            continue;
+        }
         if (!in_section)
             continue;
+        // Track where to append a missing key: after the section's
+        // last `key = value` line. Comments and blanks don't count —
+        // they may already belong to the NEXT section visually (a
+        // comment wall right above `[other]` is common in this file),
+        // and a key inserted there would read as misplaced.
+        const std::size_t comment_at = line.find('#');
+        const std::size_t equals = line.find('=');
+        if (equals != std::string::npos &&
+            (comment_at == std::string::npos || equals < comment_at))
+            insert_at = i + 1;
 
         // Match `key =` with arbitrary whitespace around both parts.
         std::size_t pos = skip_spaces(line, 0);
@@ -261,9 +280,16 @@ void set_config_value(const std::string& path, const std::string& dotted_key,
         written = true;
     }
 
-    if (!written)
-        throw std::runtime_error("key not found in " + path + ": " +
-                                 dotted_key);
+    if (!written) {
+        // The key is not there yet: append it inside its section
+        // instead of failing (a hand-trimmed TOML may lack defaults
+        // the app knows how to compute).
+        if (!section_seen)
+            throw std::runtime_error("section not found in " + path + ": [" +
+                                     section + "]");
+        lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insert_at),
+                     key + " = " + render_toml_value(value));
+    }
 
     // Atomic publish: the config monitor sees either the whole old
     // file or the whole new one, never a torn write.
