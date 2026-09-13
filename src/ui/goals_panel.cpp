@@ -39,6 +39,19 @@ struct TogglePayload {
     std::string task_id;
 };
 
+struct RemovePayload {
+    GoalsActions actions;
+    std::string task_id;
+};
+
+// Drag-and-drop payload for the panel-wide drop target. The AppState
+// pointer is owned by main.cpp and outlives every rebuild.
+struct DropPayload {
+    GoalsActions actions;
+    const AppState* state;
+    GtkWidget* box;
+};
+
 struct AddFormPayload {
     GoalsActions actions;
     // Owned by main.cpp, alive for the whole app — the form only
@@ -71,6 +84,79 @@ void on_task_toggled(GtkToggleButton* toggle, gpointer) {
         g_object_get_data(G_OBJECT(toggle), "cabal-payload"));
     payload->actions.set_completed(payload->task_id,
                                    gtk_toggle_button_get_active(toggle) == TRUE);
+}
+
+void on_remove_clicked(GtkButton* button, gpointer) {
+    // Contract: "cabal-payload" is a RemovePayload owned by the button.
+    const auto* payload = static_cast<const RemovePayload*>(
+        g_object_get_data(G_OBJECT(button), "cabal-payload"));
+    payload->actions.remove_task(payload->task_id);
+}
+
+// ── Drag-and-drop reorder ────────────────────────────────────
+// Every row is a drag source carrying its task id as a string; the
+// goals box is a drop target. On drop we find the row under the
+// pointer and slide the dragged task to that slot via TaskList::move
+// (same reorder op the old arrow buttons used — the model never
+// learned about drag and drop).
+
+GdkContentProvider* on_drag_prepare(GtkDragSource*, double, double,
+                                    gpointer row_ptr) {
+    // Contract: row_ptr is a task row widget built by make_row; its
+    // "cabal-task-id" holds the id string, owned by the row.
+    const auto* row = GTK_WIDGET(row_ptr);
+    const char* id = static_cast<const char*>(
+        g_object_get_data(G_OBJECT(row), "cabal-task-id"));
+    if (id == nullptr) return nullptr; // header or foreign widget: cancel
+    return gdk_content_provider_new_typed(G_TYPE_STRING, id);
+}
+
+// Position of a task in the list, or -1 when absent.
+int index_of(const TaskList& tasks, const char* id) {
+    const auto& all = tasks.all();
+    for (std::size_t i = 0; i < all.size(); ++i)
+        if (all[i].id == id) return static_cast<int>(i);
+    return -1;
+}
+
+gboolean on_box_drop(GtkDropTarget*, const GValue* value, double,
+                     double y, gpointer payload_ptr) {
+    const auto* payload = static_cast<const DropPayload*>(payload_ptr);
+    const char* dragged_id = g_value_get_string(value);
+    if (dragged_id == nullptr) return FALSE;
+
+    const TaskList& tasks = payload->state->tasks;
+    const int source = index_of(tasks, dragged_id);
+    if (source < 0) return FALSE;
+
+    // First row whose vertical midpoint is below the drop point:
+    // insert before it. Bounds are computed in the box's coordinate
+    // space — exactly the space of the drop `y`. No row matched =
+    // drop below the last row = end of the list.
+    int insert_at = static_cast<int>(tasks.all().size());
+    for (GtkWidget* child = gtk_widget_get_first_child(payload->box);
+         child != nullptr;
+         child = gtk_widget_get_next_sibling(child)) {
+        const char* child_id = static_cast<const char*>(
+            g_object_get_data(G_OBJECT(child), "cabal-task-id"));
+        if (child_id == nullptr) continue; // section header
+        graphene_rect_t bounds;
+        if (!gtk_widget_compute_bounds(child, payload->box, &bounds))
+            continue;
+        if (y < bounds.origin.y + bounds.size.height / 2.0f) {
+            insert_at = index_of(tasks, child_id);
+            break;
+        }
+    }
+    if (insert_at < 0) return FALSE;
+
+    // Slide delta in ORIGINAL list coordinates: removing the dragged
+    // task shifts everything after it one slot, so a downward move
+    // lands one earlier than the raw difference suggests.
+    const int delta = source < insert_at ? insert_at - 1 - source
+                                         : insert_at - source;
+    if (delta != 0) payload->actions.move_task(dragged_id, delta);
+    return TRUE;
 }
 
 void on_add_task_clicked(GtkButton*, gpointer form_ptr) {
@@ -182,6 +268,15 @@ void animate_progress(GtkProgressBar* bar, double from, double to) {
 
 // ── Task rows ────────────────────────────────────────────────
 
+// A task is done when flagged, or when its counter reached its goal
+// (tracker semantics). Done tasks are not deleted: they stay in the
+// state file and the daily/weekly reset brings them back — the panel
+// just stops drawing them.
+bool row_is_done(const Task& task) {
+    return task.completed ||
+           (task.goal > 0 && task.count >= task.goal);
+}
+
 GtkWidget* make_bump_button(const GoalsActions& actions, const Task& task,
                             int delta, const char* label) {
     auto* button = gtk_button_new_with_label(label);
@@ -206,9 +301,33 @@ GtkWidget* make_toggle_button(const GoalsActions& actions, const Task& task) {
     return toggle;
 }
 
+GtkWidget* make_remove_button(const GoalsActions& actions, const Task& task) {
+    auto* button = gtk_button_new_with_label("✕");
+    gtk_widget_add_css_class(button, "goal-bump");
+    gtk_widget_set_tooltip_text(button, "Remove task");
+    auto* payload = new RemovePayload{actions, task.id};
+    g_object_set_data_full(G_OBJECT(button), "cabal-payload", payload,
+                           delete_payload<RemovePayload>);
+    g_signal_connect(button, "clicked", G_CALLBACK(on_remove_clicked), nullptr);
+    return button;
+}
+
 GtkWidget* make_row(const Task& task, const GoalsActions& actions) {
     auto* row = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
     gtk_widget_add_css_class(row, "goal-row");
+    // The drag source reads the id from here; the drop target maps
+    // rows back to positions. Owned by the row.
+    g_object_set_data_full(G_OBJECT(row), "cabal-task-id",
+                           g_strdup(task.id.c_str()), g_free);
+    gtk_widget_set_tooltip_text(row, "Drag to reorder");
+
+    // Drag source: a press-and-hold gesture on the row starts a drag
+    // carrying the task id (GTK keeps clicks and drags separate, so
+    // the buttons below still work normally).
+    auto* drag_source = gtk_drag_source_new();
+    g_signal_connect(drag_source, "prepare",
+                     G_CALLBACK(on_drag_prepare), row);
+    gtk_widget_add_controller(row, GTK_EVENT_CONTROLLER(drag_source));
 
     auto* line = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
 
@@ -219,9 +338,8 @@ GtkWidget* make_row(const Task& task, const GoalsActions& actions) {
 
     // Goal tasks show "22/30"; plain checkbox tasks show a tick or a
     // dot. Reaching the goal counts as done even if the flag was
-    // never set — tracker semantics, same as TaskList::progress.
-    const bool done =
-        task.completed || (task.goal > 0 && task.count >= task.goal);
+    // never set — row_is_done, same as TaskList::progress.
+    const bool done = row_is_done(task);
     const std::string counter = task.goal > 0
         ? std::format("{}/{}", task.count, task.goal)
         : (done ? "✓" : "·");
@@ -233,14 +351,16 @@ GtkWidget* make_row(const Task& task, const GoalsActions& actions) {
     gtk_box_append(GTK_BOX(line), name);
     gtk_box_append(GTK_BOX(line), count);
     // Goal tasks get +/- counter buttons; plain tasks get a single
-    // done toggle. In click-through mode none of these receive
-    // clicks — they matter only while interactive.
+    // done toggle. Every row gets a remove button; reordering is
+    // drag-and-drop, not arrows. In click-through mode none of these
+    // receive clicks — they matter only while interactive.
     if (task.goal > 0) {
         gtk_box_append(GTK_BOX(line), make_bump_button(actions, task, -1, "-"));
         gtk_box_append(GTK_BOX(line), make_bump_button(actions, task, 1, "+"));
     } else {
         gtk_box_append(GTK_BOX(line), make_toggle_button(actions, task));
     }
+    gtk_box_append(GTK_BOX(line), make_remove_button(actions, task));
 
     gtk_box_append(GTK_BOX(row), line);
 
@@ -291,13 +411,13 @@ void collect_bar_targets(GtkWidget* widget,
         collect_bar_targets(child, rendered);
 }
 
-// Emits the section header on the first task of this type, so a
-// type with zero tasks contributes nothing at all.
+// Emits the section header on the first VISIBLE (not done) task of
+// this type, so a type whose tasks are all done contributes nothing.
 void append_section(GtkWidget* panel, const char* title, TaskType type,
                     const AppState& state, const GoalsActions& actions) {
     bool first = true;
     for (const Task& task : state.tasks.all()) {
-        if (task.type != type) continue;
+        if (task.type != type || row_is_done(task)) continue;
         if (first) {
             auto* header = gtk_label_new(title);
             gtk_widget_add_css_class(header, "goal-section");
@@ -339,6 +459,23 @@ std::string goals_signature(const AppState& state) {
 
 void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
                          const GoalsActions& actions) {
+    // The drop target lives on the box itself, which persists across
+    // rebuilds — install it exactly once (guarded by its own data
+    // slot). Rows are drag SOURCES and get rebuilt every refresh, so
+    // those are attached per-row in make_row instead.
+    if (g_object_get_data(G_OBJECT(goals_box), "cabal-drop") == nullptr) {
+        auto* payload = new DropPayload{actions, &state, goals_box};
+        g_object_set_data_full(G_OBJECT(goals_box), "cabal-drop", payload,
+                               delete_payload<DropPayload>);
+        auto* drop = gtk_drop_target_new(G_TYPE_STRING, GDK_ACTION_COPY);
+        // COPY, not MOVE: the protocol payload is a copied id string;
+        // the actual reorder happens in the model. The drag source
+        // offers COPY by default — demanding MOVE here leaves the two
+        // action sets disjoint and every drop shows "not allowed".
+        g_signal_connect(drop, "drop", G_CALLBACK(on_box_drop), payload);
+        gtk_widget_add_controller(goals_box, GTK_EVENT_CONTROLLER(drop));
+    }
+
     // Drop every current child, then rebuild from scratch. Widget
     // trees are cheap to create; trying to diff-and-patch GTK nodes
     // would be far more code for zero perceptible gain at this size.

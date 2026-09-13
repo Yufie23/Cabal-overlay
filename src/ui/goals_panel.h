@@ -28,6 +28,11 @@ struct GoalsActions {
     std::function<void(const std::string& task_id, bool completed)> set_completed;
     // Create a new task.
     std::function<void(TaskType type, const std::string& name, int goal)> add_task;
+    // Delete a task from the tracker.
+    std::function<void(const std::string& task_id)> remove_task;
+    // Reorder: delta positions (negative = toward the top). The list
+    // order is also what the autoclick counter targets first.
+    std::function<void(const std::string& task_id, int delta)> move_task;
 };
 
 // Fingerprint of everything the task rows render: ids, names, types,

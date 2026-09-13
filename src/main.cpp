@@ -140,6 +140,10 @@ void refresh_goals_panel() {
 GoalsActions make_goals_actions() {
     GoalsActions actions;
     actions.bump_count = [](const std::string& id, int delta) {
+        // Reaching the goal sets completed in the model; the panel
+        // hides done tasks on the next refresh and the periodic reset
+        // brings them back. Nothing is deleted here — dailies repeat
+        // every day, their resurrection is the daily reset's job.
         g_state.tasks.bump_count(id, delta);
         persist_state();
         refresh_goals_panel();
@@ -151,6 +155,16 @@ GoalsActions make_goals_actions() {
     };
     actions.add_task = [](TaskType type, const std::string& name, int goal) {
         g_state.tasks.add(type, name, goal);
+        persist_state();
+        refresh_goals_panel();
+    };
+    actions.remove_task = [](const std::string& id) {
+        g_state.tasks.remove(id);
+        persist_state();
+        refresh_goals_panel();
+    };
+    actions.move_task = [](const std::string& id, int delta) {
+        g_state.tasks.move(id, delta);
         persist_state();
         refresh_goals_panel();
     };

@@ -40,6 +40,12 @@ public:
 
     bool remove(const std::string& id);
 
+    // Moves the task `delta` positions in the list (negative = toward
+    // the front), sliding the tasks in between — like reordering rows
+    // in a list UI, not swapping contents. Clamped at the ends.
+    // Returns true when the task actually moved.
+    bool move(const std::string& id, int delta);
+
     // nullptr when the id does not exist (a pointer instead of a
     // reference so "not found" is representable — checked access,
     // no exceptions for a routine lookup).

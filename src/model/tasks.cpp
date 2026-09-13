@@ -36,6 +36,30 @@ bool TaskList::remove(const std::string& id) {
     return true;
 }
 
+bool TaskList::move(const std::string& id, int delta) {
+    const auto it = std::find_if(m_tasks.begin(), m_tasks.end(),
+                                 [&](const Task& t) { return t.id == id; });
+    if (it == m_tasks.end()) return false;
+    // std::ptrdiff_t is what std::distance returns for a vector and
+    // what std::clamp needs on both sides — spelled out instead of
+    // decltype games so the types stay readable.
+    const std::ptrdiff_t index = std::distance(m_tasks.begin(), it);
+    const std::ptrdiff_t last =
+        static_cast<std::ptrdiff_t>(m_tasks.size()) - 1;
+    const std::ptrdiff_t target =
+        std::clamp(index + static_cast<std::ptrdiff_t>(delta),
+                   std::ptrdiff_t{0}, last);
+    if (target == index) return false;
+    // rotate slides the range instead of swapping two cells: the
+    // neighbors keep their relative order, the moved task lands at
+    // `target`.
+    if (target < index)
+        std::rotate(m_tasks.begin() + target, it, it + 1);
+    else
+        std::rotate(it, it + 1, m_tasks.begin() + target + 1);
+    return true;
+}
+
 Task* TaskList::find(const std::string& id) {
     const auto it = std::find_if(m_tasks.begin(), m_tasks.end(),
                                  [&](const Task& t) { return t.id == id; });
