@@ -15,6 +15,7 @@
 #include "settings_window.h"
 
 #include <exception>
+#include <format>
 #include <string>
 #include <utility>
 #include <vector>
@@ -22,6 +23,10 @@
 namespace {
 
 GtkWindow* g_window = nullptr; // the singleton
+// The app behind the singleton, kept so widgets built here can fire
+// application-level GActions (e.g. the autoclick calibrate action)
+// without threading pointers through every factory.
+GtkApplication* g_app = nullptr;
 
 // ── Payload + trampolines ────────────────────────────────────
 
@@ -253,6 +258,43 @@ GtkWidget* build_alarms_page(const AppConfig& config,
     return GTK_WIDGET(grid);
 }
 
+GtkWidget* build_autoclick_page(const AppConfig& config,
+                                const std::string& path) {
+    auto* grid = GTK_GRID(make_page_grid());
+    const AutoclickConfig& zone = config.autoclick;
+    int row = 0;
+    add_row(grid, row++, "Autoclick enabled",
+            make_switch(path, "autoclick.enabled", zone.enabled));
+    add_row(grid, row++, "Require CTRL",
+            make_switch(path, "autoclick.require_ctrl", zone.require_ctrl));
+    add_row(grid, row++, "Zone width",
+            make_spin(path, "autoclick.width", zone.width, 16, 2000));
+    add_row(grid, row++, "Zone height",
+            make_spin(path, "autoclick.height", zone.height, 16, 1200));
+
+    // Snapshot of the captured zone. The numbers refresh when this
+    // window reopens; calibration itself is one click anywhere on
+    // screen, reported back through a desktop notification.
+    const std::string zone_text = std::format("Captured zone: ({}, {}) — {}×{}",
+                                              zone.x, zone.y, zone.width, zone.height);
+    auto* zone_label = gtk_label_new(zone_text.c_str());
+    gtk_label_set_xalign(GTK_LABEL(zone_label), 0.0);
+    gtk_grid_attach(grid, zone_label, 0, row, 2, 1);
+    ++row;
+
+    auto* calibrate = gtk_button_new_with_label("Capture click zone…");
+    gtk_widget_set_tooltip_text(
+        calibrate, "Arms capture: the next primary click anywhere on "
+                   "screen becomes the zone center and enables autoclick");
+    g_signal_connect(calibrate, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer) {
+                         g_action_group_activate_action(
+                             G_ACTION_GROUP(g_app), "calibrate-click", nullptr);
+                     }), nullptr);
+    gtk_grid_attach(grid, calibrate, 0, row, 2, 1);
+    return GTK_WIDGET(grid);
+}
+
 GtkWidget* build_hotkey_page(const AppConfig& config,
                              const std::string& path) {
     auto* grid = GTK_GRID(make_page_grid());
@@ -282,6 +324,7 @@ void present(GtkApplication* app, const AppConfig& config,
         return;
     }
 
+    g_app = app;
     g_window = GTK_WINDOW(gtk_application_window_new(app));
     gtk_window_set_title(g_window, "Cabal Overlay Settings");
     gtk_window_set_default_size(g_window, 460, 380);
@@ -295,6 +338,8 @@ void present(GtkApplication* app, const AppConfig& config,
                              gtk_label_new("Alarms"));
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_hotkey_page(config, config_path),
                              gtk_label_new("Hotkey"));
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_autoclick_page(config, config_path),
+                             gtk_label_new("Autoclick"));
     gtk_window_set_child(g_window, notebook);
 
     // Drop the singleton when the window closes so the next open

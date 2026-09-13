@@ -34,11 +34,13 @@
 #include <canberra.h>
 
 #include "app/alarms.h"
+#include "app/autoclick.h"
 #include "time/clock.h"
 #include "app/config.h"
 #include "model/dungeons.h"
 #include "platform/hotkey.h"
 #include "platform/overlay.h"
+#include "platform/pointer.h"
 #include "time/schedule.h"
 #include "model/state.h"
 #include "model/tasks.h"
@@ -86,6 +88,10 @@ bool          g_state_writable = true;
 // tick compares against goals_signature() and only rebuilds the
 // panel widgets when a task actually changed.
 std::string   g_goals_signature;
+// Armed by the "calibrate-click" action: the next primary click is
+// not a dungeon clear but the user showing us WHERE the dialog
+// button sits — it becomes the new zone center instead of a bump.
+bool          g_calibrating_click = false;
 
 // Maps a config section onto the platform Placement struct. Two
 // plain overloads (one per config type) instead of a template: three
@@ -332,6 +338,77 @@ void send_alarm_notification(const ScheduleEvent& event, int minutes) {
     g_message("alarm: %s in %d min", event.name.c_str(), minutes);
 }
 
+// Simple replacement-style notification for app-level feedback (no
+// sound — this is not an alarm, just an acknowledgement).
+void send_info_notification(const char* id, const char* title,
+                            const std::string& body) {
+    auto* notification = g_notification_new(title);
+    g_notification_set_body(notification, body.c_str());
+    g_application_send_notification(g_app, id, notification);
+    g_object_unref(notification);
+}
+
+// Sensor → app logic. Runs on the GLib main thread (the pointer poll
+// is a GLib timer), so it touches the same globals every other
+// callback uses — no locking, same as the tick.
+void on_pointer_click(int x, int y, bool ctrl) {
+    if (g_calibrating_click) {
+        g_calibrating_click = false;
+        // The clicked spot is the CENTER of the zone, not its corner:
+        // the user clicks the dialog button repeatedly, and those
+        // clicks scatter by a few pixels around one point — a corner-
+        // anchored rectangle would put most of them outside its
+        // top/left edges. The configured size defines the rectangle
+        // around the click; coordinates may go negative near screen
+        // edges, the hit test handles that fine.
+        try {
+            const int half_w = g_config.autoclick.width / 2;
+            const int half_h = g_config.autoclick.height / 2;
+            set_config_value(kConfigPath, "autoclick.x", x - half_w);
+            set_config_value(kConfigPath, "autoclick.y", y - half_h);
+            set_config_value(kConfigPath, "autoclick.enabled", true);
+            const std::string body =
+                std::format("zone centered at ({}, {})", x, y);
+            send_info_notification("cabal-autoclick-calibrated",
+                                   "Click zone captured", body);
+            g_message("autoclick: zone captured at %d,%d (center)", x, y);
+        } catch (const std::exception& error) {
+            g_warning("autoclick: could not save captured zone: %s",
+                      error.what());
+        }
+        return;
+    }
+
+    if (!autoclick::click_counts(g_config.autoclick, x, y, ctrl)) {
+        // Diagnostic for the armed-but-missing case: a CTRL+click
+        // while the feature is on is a deliberate counter attempt —
+        // one line beats guessing whether the click reached the app.
+        if (ctrl && g_config.autoclick.enabled)
+            g_message("autoclick: ctrl+click at %d,%d is outside zone "
+                      "[%d..%d) x [%d..%d)", x, y,
+                      g_config.autoclick.x,
+                      g_config.autoclick.x + g_config.autoclick.width,
+                      g_config.autoclick.y,
+                      g_config.autoclick.y + g_config.autoclick.height);
+        return; // a normal game click, outside the zone
+    }
+    const std::string id = autoclick::target_task_id(g_state.tasks);
+    if (id.empty()) {
+        g_message("autoclick: click in zone but no task tracked");
+        return;
+    }
+    g_actions.bump_count(id, +1);
+    g_message("autoclick: +1 on task %s", id.c_str());
+}
+
+// D-Bus action handler: arm one-shot zone capture. The settings
+// window button and any desktop shortcut can both trigger it.
+void on_calibrate_click(GSimpleAction*, GVariant*, gpointer) {
+    g_calibrating_click = true;
+    g_message("autoclick: waiting for the next click to capture the "
+              "dialog position");
+}
+
 // g_timeout_add callback. GLib timers expect this exact signature:
 // returning G_SOURCE_CONTINUE re-arms the timer for another second;
 // returning G_SOURCE_REMOVE would stop it.
@@ -539,6 +616,18 @@ void on_activate(GtkApplication* app, gpointer) {
     if (apply_resets(g_state, std::chrono::system_clock::now()))
         persist_state();
 
+    // Pointer sensor for the autoclick counter. Started unconditionally
+    // (it is a zero-privilege X11 client): whether clicks COUNT is the
+    // config's [autoclick] decision, made on every click, so toggling
+    // the zone in the settings needs no restart. Calibration also
+    // requires the watch even while the feature is disabled.
+    if (platform::pointer_watch_start(on_pointer_click))
+        g_message("autoclick: pointer watch active (zone %dx%d at %d,%d, "
+                  "ctrl required: %s)", g_config.autoclick.width,
+                  g_config.autoclick.height, g_config.autoclick.x,
+                  g_config.autoclick.y,
+                  g_config.autoclick.require_ctrl ? "yes" : "no");
+
     // Tick once per second to refresh clocks and countdowns.
     g_timeout_add(1000, on_tick, bar);
 }
@@ -602,6 +691,14 @@ int main(int argc, char* argv[]) {
         {
             .name           = "open-settings",
             .activate       = on_open_settings,
+            .parameter_type = nullptr,
+            .state          = nullptr,
+            .change_state   = nullptr,
+            .padding        = {0, 0, 0},
+        },
+        {
+            .name           = "calibrate-click",
+            .activate       = on_calibrate_click,
             .parameter_type = nullptr,
             .state          = nullptr,
             .change_state   = nullptr,

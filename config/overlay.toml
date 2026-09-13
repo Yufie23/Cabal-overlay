@@ -3,13 +3,13 @@
 
 [overlay]
 anchor = "bottom-left"      # top | bottom + left | right
-margin_x = 1                # horizontal distance from screen edge
+margin_x = 0  # horizontal distance from screen edge
 margin_y = 35               # vertical distance from screen edge
 # Whole-bar fade (text included). 1.0 = fully opaque. The bar's
 # background translucency lives in the CSS, not here.
 opacity = 1.0
 theme = "prosperity"        # prosperity | procyon | capella (not wired yet)
-max_countdowns = 3
+max_countdowns = 1
 
 [panel]
 visible = true
@@ -40,8 +40,34 @@ opacity = 0.9
 mode = "external"
 combo = "Shift+Space"       # only read in "evdev" mode
 
+# ─────────────────────────────────────────────────────────────
+# Autoclick — screen-zone click counter.
+#
+# Cabal's dungeon-end dialog always appears at the same screen spot
+# and must be clicked to dismiss it. When enabled, a click landing
+# inside the rectangle below counts as one dungeon clear and adds +1
+# to the first task in the goals panel. Nothing is read from memory:
+# the app only polls the pointer position through the plain X11
+# client library, same as any regular application.
+#
+# Coordinates are absolute screen pixels; the captured click is the
+# CENTER of the rectangle (x = center - width/2, y = center -
+# height/2). Calibrate from the settings window (Autoclick tab):
+# click the exact dialog spot once and the zone is saved here
+# automatically.
+#
+# "require_ctrl = true" means only CTRL+click counts — holding CTRL
+# is the marker "this click was meant for the counter, not the game".
+[autoclick]
+enabled = true
+x = 850
+y = 499
+width = 240
+height = 120
+require_ctrl = true
+
 [alarms]
-enabled = false
+enabled = true
 volume = 50                 # 0-100
 warn_before_min = 5
 daily = true

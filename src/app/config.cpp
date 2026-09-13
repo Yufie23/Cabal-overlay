@@ -98,6 +98,15 @@ AppConfig load_config(const std::string& path) {
         config.hotkey.combo = (*hotkey)["combo"].value_or(config.hotkey.combo);
     }
 
+    if (const auto* autoclick = root["autoclick"].as_table()) {
+        config.autoclick.enabled       = (*autoclick)["enabled"].value_or(config.autoclick.enabled);
+        config.autoclick.x             = (*autoclick)["x"].value_or(config.autoclick.x);
+        config.autoclick.y             = (*autoclick)["y"].value_or(config.autoclick.y);
+        config.autoclick.width         = (*autoclick)["width"].value_or(config.autoclick.width);
+        config.autoclick.height        = (*autoclick)["height"].value_or(config.autoclick.height);
+        config.autoclick.require_ctrl  = (*autoclick)["require_ctrl"].value_or(config.autoclick.require_ctrl);
+    }
+
     if (const auto* alarms = root["alarms"].as_table()) {
         config.alarms.enabled         = (*alarms)["enabled"].value_or(config.alarms.enabled);
         config.alarms.volume          = (*alarms)["volume"].value_or(config.alarms.volume);

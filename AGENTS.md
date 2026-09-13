@@ -39,6 +39,14 @@ No unchecked type punning. In practice:
   `docs/03-native-integration.md`. The WebKitGTK embedding idea
   (`docs/02-tracker-overlay.md`) was rejected; the tracker is a data source,
   not a UI to embed.
+- Input observation (autoclick counter) uses the X11 core protocol over
+  XWayland (`platform/pointer_x11.cpp`): polling XQueryPointer/XQueryKeymap
+  from a plain X client needs zero privileges (unlike evdev hotkeys). It only
+  sees the pointer while it is over X11 surfaces — which is exactly where the
+  game's dungeon-end dialog lives. Synthetic-input testing on this machine is
+  not possible (XTEST is a no-op under rootless XWayland; uinput devices are
+  created but KWin does not route their events), so the press-edge path is
+  validated by a real in-game click.
 - Later phases read game memory from outside via `process_vm_readv()` /
   `/proc/<pid>/mem`; offsets found with PINCE/scanmem. See `docs/01-overlay-estatico.md`
   for the original standalone-widget plan (superseded for phase 1) and the

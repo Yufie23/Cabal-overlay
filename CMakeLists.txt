@@ -43,6 +43,10 @@ pkg_check_modules(LAYER_SHELL REQUIRED IMPORTED_TARGET gtk4-layer-shell-0)
 pkg_check_modules(TOMLPP REQUIRED IMPORTED_TARGET tomlplusplus)
 pkg_check_modules(NLOHMANN REQUIRED IMPORTED_TARGET nlohmann_json)
 pkg_check_modules(CANBERRA REQUIRED IMPORTED_TARGET libcanberra)
+# X11 client library: the autoclick pointer sensor reads pointer state
+# through the plain core protocol (XQueryPointer/XQueryKeymap), no
+# extensions, no input devices, no extra permissions.
+pkg_check_modules(X11 REQUIRED IMPORTED_TARGET x11)
 
 # Source files. The platform backend is chosen here: today there is
 # only the Wayland one, but the day a Windows build is needed this
@@ -52,6 +56,7 @@ pkg_check_modules(CANBERRA REQUIRED IMPORTED_TARGET libcanberra)
 add_executable(cabal-overlay
     src/main.cpp
     src/app/alarms.cpp
+    src/app/autoclick.cpp
     src/time/clock.cpp
     src/app/config.cpp
     src/model/dungeons.cpp
@@ -62,6 +67,7 @@ add_executable(cabal-overlay
     src/ui/settings_window.cpp
     src/platform/overlay_wayland.cpp
     src/platform/hotkey_linux.cpp
+    src/platform/pointer_x11.cpp
 )
 
 # Lets sources write #include "platform/overlay.h" from anywhere.
@@ -73,6 +79,7 @@ target_link_libraries(cabal-overlay PRIVATE
     PkgConfig::TOMLPP
     PkgConfig::NLOHMANN
     PkgConfig::CANBERRA
+    PkgConfig::X11
 )
 
 # Treat warnings seriously from day one: -Wall -Wextra enable the
