@@ -47,6 +47,13 @@ No unchecked type punning. In practice:
   not possible (XTEST is a no-op under rootless XWayland; uinput devices are
   created but KWin does not route their events), so the press-edge path is
   validated by a real in-game click.
+- Game-focus visibility (`platform/game_watch_x11.cpp`) reuses the same X11
+  client trick: find the game window via WM_CLASS (Wine sets it to the exe
+  name) and poll XGetInputFocus. When a native Wayland window is focused the
+  X focus drops to PointerRoot/None, so the overlay hides itself on alt-tab
+  and reappears when the game is focused again. Hiding is debounced ~750 ms;
+  interactive mode suppresses it (the game is unfocused by definition while
+  the user clicks the overlay). Config: `overlay.show_only_when_game_focused`.
 - Later phases read game memory from outside via `process_vm_readv()` /
   `/proc/<pid>/mem`; offsets found with PINCE/scanmem. See `docs/01-overlay-estatico.md`
   for the original standalone-widget plan (superseded for phase 1) and the

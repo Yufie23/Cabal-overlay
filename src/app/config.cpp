@@ -73,6 +73,9 @@ AppConfig load_config(const std::string& path) {
         config.overlay.opacity        = overlay["opacity"].value_or(config.overlay.opacity);
         config.overlay.theme          = overlay["theme"].value_or(config.overlay.theme);
         config.overlay.max_countdowns = overlay["max_countdowns"].value_or(config.overlay.max_countdowns);
+        config.overlay.show_only_when_game_focused =
+            overlay["show_only_when_game_focused"]
+                .value_or(config.overlay.show_only_when_game_focused);
     }
 
     if (const auto* panel = root["panel"].as_table()) {

@@ -211,6 +211,9 @@ GtkWidget* build_bar_page(const AppConfig& config,
     add_row(grid, row++, "Max countdowns",
             make_spin(path, "overlay.max_countdowns",
                       config.overlay.max_countdowns, 1, 5));
+    add_row(grid, row++, "Only over the game (hide on alt-tab)",
+            make_switch(path, "overlay.show_only_when_game_focused",
+                        config.overlay.show_only_when_game_focused));
     return GTK_WIDGET(grid);
 }
 

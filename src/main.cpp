@@ -40,6 +40,7 @@
 #include "app/config.h"
 #include "model/dungeons.h"
 #include "platform/hotkey.h"
+#include "platform/game_watch.h"
 #include "platform/overlay.h"
 #include "platform/pointer.h"
 #include "time/schedule.h"
@@ -93,6 +94,12 @@ std::string   g_goals_signature;
 // not a dungeon clear but the user showing us WHERE the dialog
 // button sits — it becomes the new zone center instead of a bump.
 bool          g_calibrating_click = false;
+// Game-focus visibility (platform/game_watch.h). The overlay floats
+// on the compositor's OVERLAY layer — above EVERYTHING, alt-tab
+// included — so when the game loses the input focus we hide both
+// surfaces instead of drawing over the desktop.
+bool          g_game_watch_active = false;
+bool          g_game_focused = false;
 
 // Maps a config section onto the platform Placement struct. Two
 // plain overloads (one per config type) instead of a template: three
@@ -303,6 +310,12 @@ void persist_adjusted_margins(const std::string& section,
     }
 }
 
+// Defined below, next to set_interactive; reload_config needs them
+// to start/stop the watcher and re-apply visibility when the config
+// toggles them.
+void sync_game_watch();
+void apply_overlay_visibility();
+
 // Live config reload: the file watcher calls this whenever the
 // TOML changes. Unlike startup, a broken file here is NOT fatal:
 // we log the error and keep the previous working config (the bar
@@ -323,6 +336,8 @@ void reload_config() {
                 platform::overlay_apply_placement(g_panel_window, panel));
         }
         g_message("config reloaded from %s", kConfigPath);
+        sync_game_watch();
+        apply_overlay_visibility();
     } catch (const std::exception& error) {
         g_warning("config reload failed, keeping previous config: %s",
                   error.what());
@@ -340,6 +355,45 @@ void on_config_file_changed(GFileMonitor*, GFile*, GFile*,
     reload_config();
 }
 
+// ── Game-focus visibility ────────────────────────────────────
+// The overlay only makes sense ON TOP of the game. The watcher
+// reports whether the game window holds the X input focus; whenever
+// it does not (alt-tab, desktop, game closed) both surfaces hide.
+// Interactive mode suppresses hiding on purpose: while the user
+// clicks the overlay the game is unfocused BY DEFINITION, and hiding
+// the very thing being clicked would be absurd.
+void apply_overlay_visibility() {
+    const bool visible =
+        !g_game_watch_active || g_game_focused || g_interactive;
+    gtk_widget_set_visible(GTK_WIDGET(g_window), visible);
+    if (g_panel_window != nullptr)
+        gtk_widget_set_visible(GTK_WIDGET(g_panel_window), visible);
+}
+
+void on_game_focus_change(bool focused) {
+    g_game_focused = focused;
+    apply_overlay_visibility();
+}
+
+// Starts or stops the watcher to match the current config, so the
+// settings switch applies live through the usual TOML round-trip.
+void sync_game_watch() {
+    const bool want = g_config.overlay.show_only_when_game_focused;
+    if (want && !g_game_watch_active) {
+        if (platform::game_watch_start(on_game_focus_change)) {
+            g_game_watch_active = true;
+            g_game_focused = platform::game_has_focus_now();
+            g_message("game watch: overlay shows only while the game "
+                      "holds focus (initially %s)",
+                      g_game_focused ? "focused" : "unfocused");
+        }
+    } else if (!want && g_game_watch_active) {
+        platform::game_watch_stop();
+        g_game_watch_active = false;
+        apply_overlay_visibility(); // nothing hides the overlay anymore
+    }
+}
+
 void set_interactive(bool enabled) {
     g_interactive = enabled;
     g_message("interactive mode: %s",
@@ -347,6 +401,9 @@ void set_interactive(bool enabled) {
     platform::overlay_set_interactive(g_window, enabled);
     if (g_panel_window != nullptr)
         platform::overlay_set_interactive(g_panel_window, enabled);
+    // Leaving interactive mode re-exposes the focus rule: if the
+    // game is not focused, the overlay hides now.
+    apply_overlay_visibility();
 }
 
 // D-Bus action handler. Signature fixed by GAction: the action
@@ -667,6 +724,14 @@ void on_activate(GtkApplication* app, gpointer) {
 
     // Start in click-through mode: the game keeps the mouse.
     set_interactive(false);
+
+    // Hide both surfaces whenever the game is not the focused
+    // window. The initial synchronous sweep inside game_watch_start
+    // means a not-running game never flashes the overlay over the
+    // desktop even for a frame: everything above already ran within
+    // this single main-loop tick.
+    sync_game_watch();
+    apply_overlay_visibility();
 
     // Global combo handling, three modes (see [hotkey] in the TOML
     // and docs/04-hotkey-modes.md). Default is External: the desktop

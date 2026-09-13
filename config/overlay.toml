@@ -14,6 +14,11 @@ margin_y = 1009  # vertical distance from screen edge (from corner if custom)
 opacity = 1.0
 theme = "prosperity"        # prosperity | procyon | capella (not wired yet)
 max_countdowns = 1
+# Hide the overlay whenever the game window does not hold the input
+# focus (alt-tab to the browser/desktop, game minimized or closed).
+# The watcher finds the game through X11 — it runs under XWayland —
+# and needs no extra permissions. False = always float on top.
+show_only_when_game_focused = true
 
 [panel]
 visible = true

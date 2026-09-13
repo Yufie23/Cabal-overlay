@@ -40,9 +40,9 @@ struct ScheduleEvent {
 // uninitialized int in C++ holds whatever was in that RAM before —
 // there is no "undefined" here).
 //
-// Only max_countdowns is wired into the app today; anchor, margins,
-// opacity and theme are parsed for the upcoming settings/positioning
-// work, so the TOML and this struct stay in sync.
+// anchor/margins/opacity drive the bar's placement (platform::
+// Placement), max_countdowns the bar text, and
+// show_only_when_game_focused the visibility watch in main.cpp.
 struct OverlayConfig {
     std::string anchor = "top-right";
     int margin_x = 20;
@@ -50,6 +50,11 @@ struct OverlayConfig {
     double opacity = 0.85;
     std::string theme = "prosperity";
     int max_countdowns = 3;
+    // True → the overlay hides itself whenever the game window does
+    // not hold the input focus (alt-tab, desktop, game closed). Needs
+    // the game under XWayland; falls back to always-visible if the
+    // X11 display cannot be opened.
+    bool show_only_when_game_focused = true;
 };
 
 // [alarms] section. Parsed so the struct always reflects the file;

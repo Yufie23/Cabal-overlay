@@ -17,7 +17,6 @@
 #include "goals_panel.h"
 
 #include <algorithm>
-#include <cmath>
 #include <format>
 #include <map>
 #include <set>
