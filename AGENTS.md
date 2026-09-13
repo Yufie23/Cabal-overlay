@@ -84,6 +84,22 @@ No unchecked type punning. In practice:
   for the original standalone-widget plan (superseded for phase 1) and the
   roadmap for phases 2-3.
 
+## Distribution
+
+- `dist/linux/package.sh` builds a Release tarball (binary + shipped
+  config/data + install.sh) into `dist/out/`. The app resolves
+  config/ and data/ relative to its working directory, so install.sh
+  copies the bundle to `~/.local/share/cabal-overlay/` and installs a
+  wrapper into `~/.local/bin/` that cds there before exec.
+- `dist/windows/build-msys2.sh` (run inside an MSYS2 UCRT64 shell) is
+  the supported Windows build: pacman deps, Release build, ntldd-based
+  MinGW DLL bundling into a self-contained stage, then the NSIS
+  installer (`dist/windows/cabal-overlay.nsi`) when makensis exists.
+  Scripts are written but not yet exercised end-to-end — the first
+  on-Windows build will validate them (same unknowns as above).
+- `README.md` is the user-facing doc (requirements, install,
+  first-run setup, uninstall). Keep it in sync with reality.
+
 ## Conventions
 
 - The vendored HTML tracker (`Prosperity_Task_Tracker.v6.1/`) is a read-only

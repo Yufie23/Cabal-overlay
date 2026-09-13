@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Cabal Overlay
+Comment=Game overlay for Cabal Online (private server)
+Exec=@BINDIR@/cabal-overlay
+Terminal=false
+Categories=Game;Utility;
+StartupNotify=false

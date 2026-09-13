@@ -26,6 +26,9 @@ CTestTestfile.cmake
 state.json
 *.state.json
 
+# ── Distribution artifacts (tarballs, installers, staged bundles) ──
+/dist/out/
+
 # ── Editor / IDE ────────────────────────────────────────────
 .vscode/
 .idea/
