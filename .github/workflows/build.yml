@@ -25,6 +25,10 @@ jobs:
   windows:
     name: Windows installer
     runs-on: windows-latest
+    env:
+      # The secrets context is not allowed in step-level `if:`
+      # expressions; mapping it to env is the documented workaround.
+      SIGNPATH_TOKEN: ${{ secrets.SIGNPATH_TOKEN }}
     steps:
       - uses: actions/checkout@v5
 
@@ -69,7 +73,7 @@ jobs:
       # SIGNPATH_* repository variables exist — the pipeline stays
       # functional (unsigned) in the meantime.
       - name: Submit to SignPath for signing
-        if: ${{ secrets.SIGNPATH_TOKEN != '' }}
+        if: ${{ env.SIGNPATH_TOKEN != '' }}
         uses: signpath/github-action-submit-signing-request@v1
         with:
           api-token: ${{ secrets.SIGNPATH_TOKEN }}
@@ -82,20 +86,20 @@ jobs:
           output-artifact-directory: signed
 
       - name: Upload signed installer
-        if: ${{ secrets.SIGNPATH_TOKEN != '' }}
+        if: ${{ env.SIGNPATH_TOKEN != '' }}
         uses: actions/upload-artifact@v4
         with:
           name: cabal-overlay-setup-windows-signed
           path: signed/
 
       - name: Publish signed installer on tag
-        if: startsWith(github.ref, 'refs/tags/v') && secrets.SIGNPATH_TOKEN != ''
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNPATH_TOKEN != ''
         uses: softprops/action-gh-release@v2
         with:
           files: signed/cabal-overlay-*-setup.exe
 
       - name: Publish unsigned installer on tag (pre-SignPath fallback)
-        if: startsWith(github.ref, 'refs/tags/v') && secrets.SIGNPATH_TOKEN == ''
+        if: startsWith(github.ref, 'refs/tags/v') && env.SIGNPATH_TOKEN == ''
         uses: softprops/action-gh-release@v2
         with:
           files: dist/out/cabal-overlay-*-setup.exe
