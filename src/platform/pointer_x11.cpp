@@ -76,7 +76,7 @@ bool pointer_watch_start(std::function<void(int, int, bool)> on_click) {
 
     g_display = XOpenDisplay(nullptr);
     if (g_display == nullptr) {
-        g_warning("autoclick: cannot open the X11 display; pointer "
+        g_warning("dgcheck: cannot open the X11 display; pointer "
                   "watching unavailable (game must run under XWayland)");
         return false;
     }

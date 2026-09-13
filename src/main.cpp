@@ -35,7 +35,7 @@
 #include <canberra.h>
 
 #include "app/alarms.h"
-#include "app/autoclick.h"
+#include "app/dgcheck.h"
 #include "time/clock.h"
 #include "app/config.h"
 #include "model/dungeons.h"
@@ -90,7 +90,7 @@ bool          g_state_writable = true;
 // tick compares against goals_signature() and only rebuilds the
 // panel widgets when a task actually changed.
 std::string   g_goals_signature;
-// Armed by the "calibrate-click" action: the next primary click is
+// Armed by the "calibrate-zone" action: the next primary click is
 // not a dungeon clear but the user showing us WHERE the dialog
 // button sits — it becomes the new zone center instead of a bump.
 bool          g_calibrating_click = false;
@@ -490,50 +490,50 @@ void on_pointer_click(int x, int y, bool ctrl) {
         // around the click; coordinates may go negative near screen
         // edges, the hit test handles that fine.
         try {
-            const int half_w = g_config.autoclick.width / 2;
-            const int half_h = g_config.autoclick.height / 2;
-            set_config_value(kConfigPath, "autoclick.x", x - half_w);
-            set_config_value(kConfigPath, "autoclick.y", y - half_h);
-            set_config_value(kConfigPath, "autoclick.enabled", true);
+            const int half_w = g_config.dgcheck.width / 2;
+            const int half_h = g_config.dgcheck.height / 2;
+            set_config_value(kConfigPath, "dgcheck.x", x - half_w);
+            set_config_value(kConfigPath, "dgcheck.y", y - half_h);
+            set_config_value(kConfigPath, "dgcheck.enabled", true);
             const std::string body =
                 std::format("zone centered at ({}, {})", x, y);
-            send_info_notification("cabal-autoclick-calibrated",
+            send_info_notification("cabal-dgcheck-calibrated",
                                    "Click zone captured", body);
-            g_message("autoclick: zone captured at %d,%d (center)", x, y);
+            g_message("dgcheck: zone captured at %d,%d (center)", x, y);
         } catch (const std::exception& error) {
-            g_warning("autoclick: could not save captured zone: %s",
+            g_warning("dgcheck: could not save captured zone: %s",
                       error.what());
         }
         return;
     }
 
-    if (!autoclick::click_counts(g_config.autoclick, x, y, ctrl)) {
+    if (!dgcheck::counts_click(g_config.dgcheck, x, y, ctrl)) {
         // Diagnostic for the armed-but-missing case: a CTRL+click
         // while the feature is on is a deliberate counter attempt —
         // one line beats guessing whether the click reached the app.
-        if (ctrl && g_config.autoclick.enabled)
-            g_message("autoclick: ctrl+click at %d,%d is outside zone "
+        if (ctrl && g_config.dgcheck.enabled)
+            g_message("dgcheck: ctrl+click at %d,%d is outside zone "
                       "[%d..%d) x [%d..%d)", x, y,
-                      g_config.autoclick.x,
-                      g_config.autoclick.x + g_config.autoclick.width,
-                      g_config.autoclick.y,
-                      g_config.autoclick.y + g_config.autoclick.height);
+                      g_config.dgcheck.x,
+                      g_config.dgcheck.x + g_config.dgcheck.width,
+                      g_config.dgcheck.y,
+                      g_config.dgcheck.y + g_config.dgcheck.height);
         return; // a normal game click, outside the zone
     }
-    const std::string id = autoclick::target_task_id(g_state.tasks);
+    const std::string id = dgcheck::target_task_id(g_state.tasks);
     if (id.empty()) {
-        g_message("autoclick: click in zone but no task tracked");
+        g_message("dgcheck: click in zone but no task tracked");
         return;
     }
     g_actions.bump_count(id, +1);
-    g_message("autoclick: +1 on task %s", id.c_str());
+    g_message("dgcheck: +1 on task %s", id.c_str());
 }
 
 // D-Bus action handler: arm one-shot zone capture. The settings
 // window button and any desktop shortcut can both trigger it.
-void on_calibrate_click(GSimpleAction*, GVariant*, gpointer) {
+void on_calibrate_zone(GSimpleAction*, GVariant*, gpointer) {
     g_calibrating_click = true;
-    g_message("autoclick: waiting for the next click to capture the "
+    g_message("dgcheck: waiting for the next click to capture the "
               "dialog position");
 }
 
@@ -761,17 +761,17 @@ void on_activate(GtkApplication* app, gpointer) {
     if (apply_resets(g_state, std::chrono::system_clock::now()))
         persist_state();
 
-    // Pointer sensor for the autoclick counter. Started unconditionally
+    // Pointer sensor for the dgcheck counter. Started unconditionally
     // (it is a zero-privilege X11 client): whether clicks COUNT is the
-    // config's [autoclick] decision, made on every click, so toggling
+    // config's [dgcheck] decision, made on every click, so toggling
     // the zone in the settings needs no restart. Calibration also
     // requires the watch even while the feature is disabled.
     if (platform::pointer_watch_start(on_pointer_click))
-        g_message("autoclick: pointer watch active (zone %dx%d at %d,%d, "
-                  "ctrl required: %s)", g_config.autoclick.width,
-                  g_config.autoclick.height, g_config.autoclick.x,
-                  g_config.autoclick.y,
-                  g_config.autoclick.require_ctrl ? "yes" : "no");
+        g_message("dgcheck: pointer watch active (zone %dx%d at %d,%d, "
+                  "ctrl required: %s)", g_config.dgcheck.width,
+                  g_config.dgcheck.height, g_config.dgcheck.x,
+                  g_config.dgcheck.y,
+                  g_config.dgcheck.require_ctrl ? "yes" : "no");
 
     // Tick once per second to refresh clocks and countdowns.
     g_timeout_add(1000, on_tick, bar);
@@ -842,8 +842,8 @@ int main(int argc, char* argv[]) {
             .padding        = {0, 0, 0},
         },
         {
-            .name           = "calibrate-click",
-            .activate       = on_calibrate_click,
+            .name           = "calibrate-zone",
+            .activate       = on_calibrate_zone,
             .parameter_type = nullptr,
             .state          = nullptr,
             .change_state   = nullptr,

@@ -24,7 +24,7 @@ namespace {
 
 GtkWindow* g_window = nullptr; // the singleton
 // The app behind the singleton, kept so widgets built here can fire
-// application-level GActions (e.g. the autoclick calibrate action)
+// application-level GActions (e.g. the dgcheck calibrate action)
 // without threading pointers through every factory.
 GtkApplication* g_app = nullptr;
 
@@ -264,19 +264,19 @@ GtkWidget* build_alarms_page(const AppConfig& config,
     return GTK_WIDGET(grid);
 }
 
-GtkWidget* build_autoclick_page(const AppConfig& config,
+GtkWidget* build_dgcheck_page(const AppConfig& config,
                                 const std::string& path) {
     auto* grid = GTK_GRID(make_page_grid());
-    const AutoclickConfig& zone = config.autoclick;
+    const DgcheckConfig& zone = config.dgcheck;
     int row = 0;
-    add_row(grid, row++, "Autoclick enabled",
-            make_switch(path, "autoclick.enabled", zone.enabled));
+    add_row(grid, row++, "DG check enabled",
+            make_switch(path, "dgcheck.enabled", zone.enabled));
     add_row(grid, row++, "Require CTRL",
-            make_switch(path, "autoclick.require_ctrl", zone.require_ctrl));
+            make_switch(path, "dgcheck.require_ctrl", zone.require_ctrl));
     add_row(grid, row++, "Zone width",
-            make_spin(path, "autoclick.width", zone.width, 16, 2000));
+            make_spin(path, "dgcheck.width", zone.width, 16, 2000));
     add_row(grid, row++, "Zone height",
-            make_spin(path, "autoclick.height", zone.height, 16, 1200));
+            make_spin(path, "dgcheck.height", zone.height, 16, 1200));
 
     // Snapshot of the captured zone. The numbers refresh when this
     // window reopens; calibration itself is one click anywhere on
@@ -291,11 +291,12 @@ GtkWidget* build_autoclick_page(const AppConfig& config,
     auto* calibrate = gtk_button_new_with_label("Capture click zone…");
     gtk_widget_set_tooltip_text(
         calibrate, "Arms capture: the next primary click anywhere on "
-                   "screen becomes the zone center and enables autoclick");
+                   "screen becomes the zone center and enables the "
+                   "DG check");
     g_signal_connect(calibrate, "clicked",
                      G_CALLBACK(+[](GtkButton*, gpointer) {
                          g_action_group_activate_action(
-                             G_ACTION_GROUP(g_app), "calibrate-click", nullptr);
+                             G_ACTION_GROUP(g_app), "calibrate-zone", nullptr);
                      }), nullptr);
     gtk_grid_attach(grid, calibrate, 0, row, 2, 1);
     return GTK_WIDGET(grid);
@@ -344,8 +345,8 @@ void present(GtkApplication* app, const AppConfig& config,
                              gtk_label_new("Alarms"));
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_hotkey_page(config, config_path),
                              gtk_label_new("Hotkey"));
-    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_autoclick_page(config, config_path),
-                             gtk_label_new("Autoclick"));
+    gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_dgcheck_page(config, config_path),
+                             gtk_label_new("DG Check"));
 
     // Bottom bar: actions that affect the whole app rather than one
     // config section. Quit goes through the D-Bus-exported GAction so

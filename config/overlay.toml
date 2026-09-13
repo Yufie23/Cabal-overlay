@@ -53,7 +53,7 @@ mode = "external"
 combo = "Shift+Space"       # only read in "evdev" mode
 
 # ─────────────────────────────────────────────────────────────
-# Autoclick — screen-zone click counter.
+# DG check — screen-zone dungeon-clear counter.
 #
 # Cabal's dungeon-end dialog always appears at the same screen spot
 # and must be clicked to dismiss it. When enabled, a click landing
@@ -64,13 +64,13 @@ combo = "Shift+Space"       # only read in "evdev" mode
 #
 # Coordinates are absolute screen pixels; the captured click is the
 # CENTER of the rectangle (x = center - width/2, y = center -
-# height/2). Calibrate from the settings window (Autoclick tab):
+# height/2). Calibrate from the settings window (DG Check tab):
 # click the exact dialog spot once and the zone is saved here
 # automatically.
 #
 # "require_ctrl = true" means only CTRL+click counts — holding CTRL
 # is the marker "this click was meant for the counter, not the game".
-[autoclick]
+[dgcheck]
 enabled = true
 x = 850
 y = 499

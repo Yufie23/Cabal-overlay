@@ -1,5 +1,5 @@
 // ─────────────────────────────────────────────────────────────
-// autoclick.h — pure logic for the screen-zone click counter
+// dgcheck.h — pure logic for the screen-zone click counter
 //
 // Deliberately platform-free: this module knows nothing about X11,
 // GTK or file formats. Given "a click happened at (x, y) with this
@@ -15,13 +15,13 @@
 #include "app/config.h"
 #include "model/tasks.h"
 
-namespace autoclick {
+namespace dgcheck {
 
 // True when a primary click at (x, y) should count as a dungeon
 // clear. The CTRL requirement is part of the zone, not the caller:
 // a click outside the rectangle, or without CTRL when CTRL is
 // required, is just a normal game click and must be ignored.
-bool click_counts(const AutoclickConfig& zone, int x, int y, bool ctrl);
+bool counts_click(const DgcheckConfig& zone, int x, int y, bool ctrl);
 
 // The task a counted click bumps: the first daily task that is not
 // done yet, or the first weekly one when no dailies remain — done
@@ -30,4 +30,4 @@ bool click_counts(const AutoclickConfig& zone, int x, int y, bool ctrl);
 // bump"; callers must check instead of indexing blindly.
 std::string target_task_id(const TaskList& tasks);
 
-} // namespace autoclick
+} // namespace dgcheck

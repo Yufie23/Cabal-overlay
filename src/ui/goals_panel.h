@@ -31,7 +31,7 @@ struct GoalsActions {
     // Delete a task from the tracker.
     std::function<void(const std::string& task_id)> remove_task;
     // Reorder: delta positions (negative = toward the top). The list
-    // order is also what the autoclick counter targets first.
+    // order is also what the dgcheck counter targets first.
     std::function<void(const std::string& task_id, int delta)> move_task;
 };
 

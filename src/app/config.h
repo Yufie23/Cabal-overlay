@@ -108,12 +108,12 @@ struct HotkeyConfig {
     std::string combo = "Shift+Space"; // only used in Evdev mode
 };
 
-// [autoclick] section — screen-zone click counter. When enabled, a
+// [dgcheck] section — screen-zone click counter. When enabled, a
 // primary click landing inside the configured rectangle counts as
 // one dungeon clear and bumps the first tracked task. Coordinates are
 // absolute screen pixels in the X11 root coordinate space — the game
 // runs under XWayland, so the dungeon-end dialog lives there.
-struct AutoclickConfig {
+struct DgcheckConfig {
     bool enabled = false;
     int x = 0;       // zone top-left corner, screen pixels
     int y = 0;
@@ -128,7 +128,7 @@ struct AppConfig {
     AlarmsConfig alarms;
     PanelConfig panel;
     HotkeyConfig hotkey;
-    AutoclickConfig autoclick;
+    DgcheckConfig dgcheck;
 };
 
 // Parses the TOML file into an AppConfig.

@@ -39,7 +39,7 @@ No unchecked type punning. In practice:
   `docs/03-native-integration.md`. The WebKitGTK embedding idea
   (`docs/02-tracker-overlay.md`) was rejected; the tracker is a data source,
   not a UI to embed.
-- Input observation (autoclick counter) uses the X11 core protocol over
+- Input observation (dgcheck counter) uses the X11 core protocol over
   XWayland (`platform/pointer_x11.cpp`): polling XQueryPointer/XQueryKeymap
   from a plain X client needs zero privileges (unlike evdev hotkeys). It only
   sees the pointer while it is over X11 surfaces — which is exactly where the

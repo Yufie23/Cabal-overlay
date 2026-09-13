@@ -1,7 +1,7 @@
 // ─────────────────────────────────────────────────────────────
 // platform/pointer.h — pointer observation contract
 //
-// The autoclick feature needs to know "the user pressed the primary
+// The dgcheck feature needs to know "the user pressed the primary
 // button at (x, y) with CTRL held". On Linux/X11 the game runs under
 // XWayland, so a plain X11 client connection sees exactly the events
 // the game window produces — the dialog click happens INSIDE that

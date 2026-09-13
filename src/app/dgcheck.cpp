@@ -1,12 +1,12 @@
 // ─────────────────────────────────────────────────────────────
-// autoclick.cpp — zone hit test + target selection
+// dgcheck.cpp — zone hit test + target selection
 // ─────────────────────────────────────────────────────────────
 
-#include "autoclick.h"
+#include "dgcheck.h"
 
-namespace autoclick {
+namespace dgcheck {
 
-bool click_counts(const AutoclickConfig& zone, int x, int y, bool ctrl) {
+bool counts_click(const DgcheckConfig& zone, int x, int y, bool ctrl) {
     if (!zone.enabled) return false;
     if (zone.require_ctrl && !ctrl) return false;
     // Half-open rectangle [x, x+width) × [y, y+height): a click on
@@ -33,4 +33,4 @@ std::string target_task_id(const TaskList& tasks) {
     return {}; // empty id: no tasks tracked, nothing to bump
 }
 
-} // namespace autoclick
+} // namespace dgcheck

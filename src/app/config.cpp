@@ -101,13 +101,13 @@ AppConfig load_config(const std::string& path) {
         config.hotkey.combo = (*hotkey)["combo"].value_or(config.hotkey.combo);
     }
 
-    if (const auto* autoclick = root["autoclick"].as_table()) {
-        config.autoclick.enabled       = (*autoclick)["enabled"].value_or(config.autoclick.enabled);
-        config.autoclick.x             = (*autoclick)["x"].value_or(config.autoclick.x);
-        config.autoclick.y             = (*autoclick)["y"].value_or(config.autoclick.y);
-        config.autoclick.width         = (*autoclick)["width"].value_or(config.autoclick.width);
-        config.autoclick.height        = (*autoclick)["height"].value_or(config.autoclick.height);
-        config.autoclick.require_ctrl  = (*autoclick)["require_ctrl"].value_or(config.autoclick.require_ctrl);
+    if (const auto* dgcheck = root["dgcheck"].as_table()) {
+        config.dgcheck.enabled       = (*dgcheck)["enabled"].value_or(config.dgcheck.enabled);
+        config.dgcheck.x             = (*dgcheck)["x"].value_or(config.dgcheck.x);
+        config.dgcheck.y             = (*dgcheck)["y"].value_or(config.dgcheck.y);
+        config.dgcheck.width         = (*dgcheck)["width"].value_or(config.dgcheck.width);
+        config.dgcheck.height        = (*dgcheck)["height"].value_or(config.dgcheck.height);
+        config.dgcheck.require_ctrl  = (*dgcheck)["require_ctrl"].value_or(config.dgcheck.require_ctrl);
     }
 
     if (const auto* alarms = root["alarms"].as_table()) {
