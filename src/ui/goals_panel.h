@@ -44,11 +44,14 @@ std::string goals_signature(const AppState& state);
 
 // Rebuilds the task rows from scratch inside `goals_box`: drops every
 // child and re-creates the DAILY/WEEKLY section headers and rows
-// (name + counter + bump buttons + progress bar). Only the goals_box
-// is touched — the caller packs the add-task form and its toggle
-// button OUTSIDE this box so an open form survives rebuilds.
+// (short code + counter + bump buttons + progress bar; the full name
+// is the label tooltip). `dungeons` maps stored names to short codes.
+// Only the goals_box is touched — the caller packs the add-task form
+// and its toggle button OUTSIDE this box so an open form survives
+// rebuilds.
 void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
-                         const GoalsActions& actions);
+                         const GoalsActions& actions,
+                         const std::vector<Dungeon>& dungeons);
 
 // Builds the collapsible "add task" form, initially hidden. Packed by
 // the caller below the goals box. `dungeons` must outlive the form

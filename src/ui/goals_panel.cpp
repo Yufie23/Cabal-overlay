@@ -2,7 +2,7 @@
 // goals_panel.cpp — goals panel and add-task form rendering
 //
 // The goals box is a vertical GtkBox. Each tracked dungeon becomes a
-// "row": a horizontal line (name left, counter right, bump buttons)
+// "row": a horizontal line (short code left, counter right, bump buttons)
 // plus, when the task has a goal, a GtkProgressBar underneath.
 // Section headers (DAILY, WEEKLY) are emitted only for types that
 // have at least one task.
@@ -56,13 +56,25 @@ struct DropPayload {
 struct AddFormPayload {
     GoalsActions actions;
     // Owned by main.cpp, alive for the whole app — the form only
-    // reads it to map a dropdown index to a dungeon.
+    // reads it to resolve a dropdown label back to a dungeon.
     const std::vector<Dungeon>* dungeons;
     GtkWidget* name_entry;
+    GtkWidget* search_entry;
     GtkWidget* dungeon_dropdown;
     GtkWidget* type_dropdown;
     GtkWidget* goal_spin;
     GtkWidget* form;
+
+    // The dungeon behind the dropdown's current selection. Positions
+    // in the FILTERED model are not catalog positions, so selection is
+    // resolved through the displayed label (unique — names are).
+    const Dungeon* selected_dungeon() const {
+        auto* item = gtk_drop_down_get_selected_item(
+            GTK_DROP_DOWN(dungeon_dropdown)); // owned by the model
+        if (item == nullptr) return nullptr;
+        return find_dungeon_by_label(
+            *dungeons, gtk_string_object_get_string(GTK_STRING_OBJECT(item)));
+    }
 };
 
 template <typename T>
@@ -172,10 +184,10 @@ void on_add_task_clicked(GtkButton*, gpointer form_ptr) {
     const char* typed = gtk_editable_get_text(GTK_EDITABLE(payload->name_entry));
     std::string name = typed != nullptr ? typed : "";
 
-    const guint dungeon_index =
-        gtk_drop_down_get_selected(GTK_DROP_DOWN(payload->dungeon_dropdown));
-    if (name.empty() && dungeon_index != GTK_INVALID_LIST_POSITION)
-        name = (*payload->dungeons)[dungeon_index].name;
+    // The dropdown's selection is a position in the FILTERED model,
+    // not the catalog — resolve it through the displayed label.
+    const Dungeon* selected = payload->selected_dungeon();
+    if (name.empty() && selected != nullptr) name = selected->name;
 
     const TaskType type = gtk_drop_down_get_selected(GTK_DROP_DOWN(payload->type_dropdown)) == 0
         ? TaskType::Daily
@@ -187,22 +199,50 @@ void on_add_task_clicked(GtkButton*, gpointer form_ptr) {
 
     payload->actions.add_task(type, name, goal);
     gtk_editable_set_text(GTK_EDITABLE(payload->name_entry), "");
+    gtk_editable_set_text(GTK_EDITABLE(payload->search_entry), "");
     gtk_widget_set_visible(payload->form, FALSE);
 }
 
 void on_add_cancel_clicked(GtkButton*, gpointer form_ptr) {
-    gtk_widget_set_visible(GTK_WIDGET(form_ptr), FALSE);
+    auto* form = GTK_WIDGET(form_ptr);
+    const auto* payload = static_cast<const AddFormPayload*>(
+        g_object_get_data(G_OBJECT(form), "cabal-payload"));
+    // Clear the filter so the next open starts from the full catalog.
+    gtk_editable_set_text(GTK_EDITABLE(payload->search_entry), "");
+    gtk_widget_set_visible(form, FALSE);
 }
 
 // Prefills the goal spin with the selected dungeon's maxRuns, so
 // picking "Abandoned City" already shows 30 — one less field to type.
-void on_dungeon_selected(GObject* dropdown, GParamSpec*, gpointer user_data) {
+void on_dungeon_selected(GObject*, GParamSpec*, gpointer user_data) {
     const auto* payload = static_cast<const AddFormPayload*>(user_data);
-    const guint index = gtk_drop_down_get_selected(GTK_DROP_DOWN(dropdown));
-    if (index == GTK_INVALID_LIST_POSITION) return;
-    gtk_spin_button_set_value(
-        GTK_SPIN_BUTTON(payload->goal_spin),
-        static_cast<double>((*payload->dungeons)[index].max_runs));
+    const Dungeon* dungeon = payload->selected_dungeon();
+    if (dungeon == nullptr) return; // no selection (e.g. model swapped)
+    gtk_spin_button_set_value(GTK_SPIN_BUTTON(payload->goal_spin),
+                              static_cast<double>(dungeon->max_runs));
+}
+
+// Live filter for the catalog dropdown: rebuilt from scratch on every
+// keystroke. GtkDropDown's built-in popup search only matches the
+// model strings; our filter matches the full name OR the short code,
+// case-insensitively, and typing happens in a normal entry in the
+// panel — no popup grab involved (layer-shell surfaces handle popups
+// poorly anyway). 86 strings rebuilt per keystroke is trivial.
+void on_search_changed(GtkEditable* entry, gpointer user_data) {
+    const auto* payload = static_cast<const AddFormPayload*>(user_data);
+    const char* text = gtk_editable_get_text(entry);
+    const std::string query = text != nullptr ? text : "";
+
+    auto* model = gtk_string_list_new(nullptr);
+    for (const Dungeon& dungeon : *payload->dungeons) {
+        if (query.empty() || dungeon_matches(dungeon, query))
+            gtk_string_list_append(model, dungeon_label(dungeon).c_str());
+    }
+    // set_model refs the list; unref leaves the dropdown as sole owner.
+    // Selection resets to "nothing" — on_dungeon_selected ignores it.
+    gtk_drop_down_set_model(GTK_DROP_DOWN(payload->dungeon_dropdown),
+                            G_LIST_MODEL(model));
+    g_object_unref(model);
 }
 
 // ── Progress bar animation ───────────────────────────────────
@@ -382,7 +422,8 @@ GtkWidget* make_remove_button(const GoalsActions& actions, const Task& task) {
     return button;
 }
 
-GtkWidget* make_row(const Task& task, const GoalsActions& actions) {
+GtkWidget* make_row(const Task& task, const GoalsActions& actions,
+                    const std::vector<Dungeon>& dungeons) {
     auto* row = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
     gtk_widget_add_css_class(row, "goal-row");
     // The drag source reads the id from here; the drop target maps
@@ -401,7 +442,14 @@ GtkWidget* make_row(const Task& task, const GoalsActions& actions) {
 
     auto* line = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
 
-    auto* name = gtk_label_new(task.name.c_str());
+    // Rows show the clan's short code when the catalog has one; the
+    // full name survives as the label's tooltip. The stored task name
+    // stays the full name (tracker-schema compatibility).
+    const std::string code = short_code_for(dungeons, task.name);
+    auto* name = gtk_label_new(code.empty() ? task.name.c_str()
+                                            : code.c_str());
+    if (!code.empty())
+        gtk_widget_set_tooltip_text(name, task.name.c_str());
     gtk_widget_add_css_class(name, "goal-name");
     gtk_label_set_xalign(GTK_LABEL(name), 0.0); // left-aligned
     gtk_widget_set_hexpand(name, TRUE);         // pushes the counter right
@@ -484,7 +532,8 @@ void collect_bar_targets(GtkWidget* widget,
 // Emits the section header on the first VISIBLE (not done) task of
 // this type, so a type whose tasks are all done contributes nothing.
 void append_section(GtkWidget* panel, const char* title, TaskType type,
-                    const AppState& state, const GoalsActions& actions) {
+                    const AppState& state, const GoalsActions& actions,
+                    const std::vector<Dungeon>& dungeons) {
     bool first = true;
     for (const Task& task : state.tasks.all()) {
         if (task.type != type || row_is_done(task)) continue;
@@ -495,21 +544,28 @@ void append_section(GtkWidget* panel, const char* title, TaskType type,
             gtk_box_append(GTK_BOX(panel), header);
             first = false;
         }
-        gtk_box_append(GTK_BOX(panel), make_row(task, actions));
+        gtk_box_append(GTK_BOX(panel), make_row(task, actions, dungeons));
     }
 }
 
 // ── Add-task form ────────────────────────────────────────────
 
+// The dropdown shows dungeon_label() strings ("AC — Abandoned City"):
+// scannable short codes, full name for context, and both parts are
+// searchable through the filter entry above the dropdown.
 GtkStringList* make_dungeon_model(const std::vector<Dungeon>& dungeons) {
     // gtk_string_list_new copies every string it is given, so the
     // model outlives any temporary we build it from.
-    std::vector<const char*> names;
-    names.reserve(dungeons.size());
+    std::vector<std::string> labels;
+    labels.reserve(dungeons.size());
     for (const Dungeon& dungeon : dungeons)
-        names.push_back(dungeon.name.c_str());
-    names.push_back(nullptr); // NULL-terminated array, C-style.
-    return gtk_string_list_new(names.data());
+        labels.push_back(dungeon_label(dungeon));
+    std::vector<const char*> pointers;
+    pointers.reserve(labels.size());
+    for (const std::string& label : labels)
+        pointers.push_back(label.c_str());
+    pointers.push_back(nullptr); // NULL-terminated array, C-style.
+    return gtk_string_list_new(pointers.data());
 }
 
 } // anonymous namespace
@@ -528,7 +584,8 @@ std::string goals_signature(const AppState& state) {
 }
 
 void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
-                         const GoalsActions& actions) {
+                         const GoalsActions& actions,
+                         const std::vector<Dungeon>& dungeons) {
     // The drop target lives on the box itself, which persists across
     // rebuilds — install it exactly once (guarded by its own data
     // slot). Rows are drag SOURCES and get rebuilt every refresh, so
@@ -575,14 +632,16 @@ void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
     while (GtkWidget* child = gtk_widget_get_first_child(goals_box))
         gtk_box_remove(GTK_BOX(goals_box), child);
 
-    append_section(goals_box, "DAILY", TaskType::Daily, state, actions);
-    append_section(goals_box, "WEEKLY", TaskType::Weekly, state, actions);
+    append_section(goals_box, "DAILY", TaskType::Daily, state, actions,
+                   dungeons);
+    append_section(goals_box, "WEEKLY", TaskType::Weekly, state, actions,
+                   dungeons);
 
     // Ghosts re-create from the snapshot on every rebuild, so a
     // rebuild mid-fade restarts the widget but not the clock.
     for (auto& entry : g_fading) {
         FadingRow& row = entry.second;
-        GtkWidget* ghost = make_row(row.snapshot, actions);
+        GtkWidget* ghost = make_row(row.snapshot, actions, dungeons);
         gtk_widget_set_sensitive(ghost, FALSE); // leaving: no input
         gtk_widget_set_opacity(ghost, fade_fraction(row));
         row.widget = ghost;
@@ -613,10 +672,18 @@ GtkWidget* goals_add_form_new(const GoalsActions& actions,
     gtk_label_set_xalign(GTK_LABEL(title), 0.0);
     gtk_box_append(GTK_BOX(form), title);
 
-    // Searchable dropdown over the 86-tracker catalog (GTK 4.10+).
+    // Catalog filter: live, case-insensitive, matches the full name OR
+    // the short code. Typing here rebuilds the dropdown model; the
+    // built-in popup search was replaced because it only matches the
+    // model strings and popups behave oddly on layer-shell surfaces.
+    auto* search_entry = gtk_entry_new();
+    gtk_widget_add_css_class(search_entry, "goal-form-entry");
+    gtk_entry_set_placeholder_text(GTK_ENTRY(search_entry),
+                                   "Filter by name or short code…");
+    gtk_box_append(GTK_BOX(form), search_entry);
+
     auto* dungeon_dropdown = gtk_drop_down_new(
         G_LIST_MODEL(make_dungeon_model(dungeons)), nullptr);
-    gtk_drop_down_set_enable_search(GTK_DROP_DOWN(dungeon_dropdown), TRUE);
     gtk_widget_set_hexpand(dungeon_dropdown, TRUE);
     gtk_box_append(GTK_BOX(form), dungeon_dropdown);
 
@@ -659,6 +726,7 @@ GtkWidget* goals_add_form_new(const GoalsActions& actions,
         .actions = actions,
         .dungeons = &dungeons,
         .name_entry = name_entry,
+        .search_entry = search_entry,
         .dungeon_dropdown = dungeon_dropdown,
         .type_dropdown = type_dropdown,
         .goal_spin = goal_spin,
@@ -673,6 +741,8 @@ GtkWidget* goals_add_form_new(const GoalsActions& actions,
     g_signal_connect(cancel_button, "clicked", G_CALLBACK(on_add_cancel_clicked), form);
     g_signal_connect(dungeon_dropdown, "notify::selected",
                      G_CALLBACK(on_dungeon_selected), payload);
+    g_signal_connect(search_entry, "changed",
+                     G_CALLBACK(on_search_changed), payload);
 
     gtk_widget_set_visible(form, FALSE);
     return form;

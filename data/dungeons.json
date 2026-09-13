@@ -4,114 +4,142 @@
   "dungeons": [
     {
       "name": "Abandoned City",
+      "shortName": "AC",
       "maxRuns": 30
     },
     {
       "name": "Mirage Island",
+      "shortName": "MI",
       "maxRuns": 30
     },
     {
       "name": "Forgotten Temple B3F",
+      "shortName": "FT3",
       "maxRuns": 30
     },
     {
       "name": "Mirage Island (Awakened)",
+      "shortName": "AMI",
       "maxRuns": 30
     },
     {
       "name": "Weakened Frozen Tower of the Undead B1F",
+      "shortName": "WEOD",
       "maxRuns": 10
     },
     {
       "name": "Flame Dimension",
+      "shortName": "FD",
       "maxRuns": 7
     },
     {
       "name": "Legend Arena",
+      "shortName": "LA",
       "maxRuns": 0
     },
     {
       "name": "Weakened Ruina Station",
+      "shortName": "WRS",
       "maxRuns": 1
     },
     {
       "name": "Automata Lab",
+      "shortName": "AL",
       "maxRuns": 30
     },
     {
       "name": "Celestia",
+      "shortName": "CELES",
       "maxRuns": 30
     },
     {
       "name": "Infinite Ordeal",
+      "shortName": "IO",
       "maxRuns": 0
     },
     {
       "name": "Palestra Inferna",
+      "shortName": "PI",
       "maxRuns": 0
     },
     {
       "name": "Purifier of the Forest",
+      "shortName": "POF",
       "maxRuns": 30
     },
     {
       "name": "Weakened Lake In Dusk",
+      "shortName": "WLiD",
       "maxRuns": 10
     },
     {
       "name": "Devil's Tower (Part2)",
+      "shortName": "DT2",
       "maxRuns": 2
     },
     {
       "name": "Flame Nest",
+      "shortName": "FN",
       "maxRuns": 30
     },
     {
       "name": "Frozen Canyon",
+      "shortName": "FC",
       "maxRuns": 30
     },
     {
       "name": "Terminus Machina",
+      "shortName": "TM",
       "maxRuns": 30
     },
     {
       "name": "Ancient Tomb",
+      "shortName": "AT",
       "maxRuns": 30
     },
     {
       "name": "(Elite) Tower of Undead B3F",
+      "shortName": "EOD3E",
       "maxRuns": 5
     },
     {
       "name": "Garden of Dust",
+      "shortName": "GOD",
       "maxRuns": 30
     },
     {
       "name": "Glacies Inferna",
+      "shortName": "GI",
       "maxRuns": 10
     },
     {
       "name": "Edge of Phantom",
+      "shortName": "EoP",
       "maxRuns": 30
     },
     {
       "name": "(Elite) Maquinas Outpost",
+      "shortName": "EMO",
       "maxRuns": 5
     },
     {
       "name": "Holy Shrine",
+      "shortName": "HS",
       "maxRuns": 2
     },
     {
       "name": "Tower of the Dead B3F (Part2)",
+      "shortName": "EOD3P2",
       "maxRuns": 30
     },
     {
       "name": "Chaos Arena Lv.7",
+      "shortName": "CA7",
       "maxRuns": 15
     },
     {
       "name": "Illusion Castle Radiant Hall (Apocrypha)",
+      "shortName": "AIC2",
       "maxRuns": 30
     },
     {
@@ -132,218 +160,272 @@
     },
     {
       "name": "Maquinas Outpost",
+      "shortName": "MO",
       "maxRuns": 30
     },
     {
       "name": "Forgotten Temple B2F (Awakened)",
+      "shortName": "AFT2",
       "maxRuns": 30
     },
     {
       "name": "Holy Keldrasil",
+      "shortName": "HK",
       "maxRuns": 2
     },
     {
       "name": "Devil's Tower",
+      "shortName": "DT1",
       "maxRuns": 2
     },
     {
       "name": "Illusion Castle Underworld (Apocrypha)",
+      "shortName": "AIC1",
       "maxRuns": 30
     },
     {
       "name": "Acheron Arena",
+      "shortName": "AA",
       "maxRuns": 30
     },
     {
       "name": "Lava Hellfire (Awakened)",
+      "shortName": "ALH",
       "maxRuns": 30
     },
     {
       "name": "Steamer Crazy (Awakened)",
+      "shortName": "ASC",
       "maxRuns": 30
     },
     {
       "name": "Catacomb Frost (Awakened)",
+      "shortName": "ACF",
       "maxRuns": 30
     },
     {
       "name": "Panic Cave (Awakened)",
+      "shortName": "APC",
       "maxRuns": 30
     },
     {
       "name": "Hazardous Valley (Awakened)",
+      "shortName": "AHV",
       "maxRuns": 30
     },
     {
       "name": "Holy Windmill",
+      "shortName": "HW",
       "maxRuns": 3
     },
     {
       "name": "Labyrinth",
+      "shortName": "LAB",
       "maxRuns": 30
     },
     {
       "name": "Forgotten Temple B2F",
+      "shortName": "FT2",
       "maxRuns": 30
     },
     {
       "name": "Altar of Siena B2F",
+      "shortName": "AoS2",
       "maxRuns": 30
     },
     {
       "name": "Forbidden Island",
+      "shortName": "FI",
       "maxRuns": 30
     },
     {
       "name": "Illusion Castle Radiant Hall",
+      "shortName": "IC2",
       "maxRuns": 30
     },
     {
       "name": "Chaos Arena Lv.6",
+      "shortName": "CA6",
       "maxRuns": 10
     },
     {
       "name": "(Elite) Catacomb Frost (Premium)",
+      "shortName": "ECFP",
       "maxRuns": 5
     },
     {
       "name": "(Elite) Lava Hellfire (Premium)",
+      "shortName": "ELHP",
       "maxRuns": 5
     },
     {
       "name": "(Elite) Steamer Crazy (Premium)",
+      "shortName": "ESCP",
       "maxRuns": 5
     },
     {
       "name": "(Elite) Panic Cave (Premium)",
+      "shortName": "EPCP",
       "maxRuns": 5
     },
     {
       "name": "Forgotten Temple B1F",
+      "shortName": "FT1",
       "maxRuns": 30
     },
     {
       "name": "Chaos Arena Lv.4",
+      "shortName": "CA4",
       "maxRuns": 7
     },
     {
       "name": "Altar of Siena B1F",
+      "shortName": "AoS1",
       "maxRuns": 30
     },
     {
       "name": "Chaos Arena Lv.5",
+      "shortName": "CA5",
       "maxRuns": 7
     },
     {
       "name": "Hazardous Valley (Easy)",
+      "shortName": "HVE",
       "maxRuns": 10
     },
     {
       "name": "Tower of the Undead B2F",
+      "shortName": "EoD2",
       "maxRuns": 50
     },
     {
       "name": "Hazardous Valley (Normal)",
+      "shortName": "HVN",
       "maxRuns": 10
     },
     {
       "name": "Hazardous Valley (Hard)",
+      "shortName": "HVH",
       "maxRuns": 20
     },
     {
       "name": "Catacomb Frost (Hard)",
+      "shortName": "CFH",
       "maxRuns": 20
     },
     {
       "name": "Panic Cave (Premium)",
+      "shortName": "PCP",
       "maxRuns": 15
     },
     {
       "name": "Steamer Crazy (Hard)",
+      "shortName": "SCH",
       "maxRuns": 20
     },
     {
       "name": "Panic Cave (Hard)",
+      "shortName": "PCH",
       "maxRuns": 20
     },
     {
       "name": "Chaos Arena Lv.2",
+      "shortName": "CA2",
       "maxRuns": 5
     },
     {
       "name": "Volcanic Citadel",
+      "shortName": "SoD",
       "maxRuns": 90
     },
     {
       "name": "Illusion Castle Underworld",
+      "shortName": "IC1",
       "maxRuns": 30
     },
     {
       "name": "Chaos Arena Lv.3",
+      "shortName": "CA3",
       "maxRuns": 5
     },
     {
       "name": "Catacomb Frost (Normal)",
+      "shortName": "CFN",
       "maxRuns": 10
     },
     {
       "name": "Lava Hellfire (Normal)",
+      "shortName": "LHN",
       "maxRuns": 10
     },
     {
       "name": "Steamer Crazy (Normal)",
+      "shortName": "SCN",
       "maxRuns": 10
     },
     {
       "name": "Lava Hellfire (Premium)",
+      "shortName": "LHP",
       "maxRuns": 15
     },
     {
       "name": "Catacomb Frost (Premium)",
+      "shortName": "CFP",
       "maxRuns": 15
     },
     {
       "name": "Panic Cave (Normal)",
+      "shortName": "PCN",
       "maxRuns": 10
     },
     {
       "name": "Lava Hellfire (Hard)",
+      "shortName": "LHH",
       "maxRuns": 20
     },
     {
       "name": "Steamer Crazy (Premium)",
+      "shortName": "SCP",
       "maxRuns": 15
     },
     {
       "name": "Lake in Dusk",
+      "shortName": "LiD",
       "maxRuns": 90
     },
     {
       "name": "Ruina Station",
+      "shortName": "RS",
       "maxRuns": 90
     },
     {
       "name": "Chaos Arena Lv.1",
+      "shortName": "CA1",
       "maxRuns": 5
     },
     {
       "name": "Tower of the Undead B1F",
+      "shortName": "EoD1",
       "maxRuns": 50
     },
     {
       "name": "Catacomb Frost (Easy)",
+      "shortName": "CFE",
       "maxRuns": 10
     },
     {
       "name": "Steamer Crazy (Easy)",
+      "shortName": "SCE",
       "maxRuns": 10
     },
     {
       "name": "Lava Hellfire (Easy)",
+      "shortName": "LHE",
       "maxRuns": 10
     },
     {
       "name": "Panic Cave (Easy)",
+      "shortName": "PCE",
       "maxRuns": 10
     }
   ]

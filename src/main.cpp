@@ -165,7 +165,7 @@ void persist_state() {
 // even with zero tasks.
 void refresh_goals_panel() {
     if (g_goals_box == nullptr || g_panel_window == nullptr) return;
-    goals_panel_refresh(g_goals_box, g_state, g_actions);
+    goals_panel_refresh(g_goals_box, g_state, g_actions, g_dungeons);
     const bool visible = !g_state.tasks.all().empty() ||
                          gtk_widget_get_visible(g_goals_form);
     gtk_widget_set_visible(GTK_WIDGET(g_panel_window), visible);
