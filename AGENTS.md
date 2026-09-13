@@ -99,6 +99,11 @@ No unchecked type punning. In practice:
   on-Windows build will validate them (same unknowns as above).
 - `README.md` is the user-facing doc (requirements, install,
   first-run setup, uninstall). Keep it in sync with reality.
+- `.github/workflows/build.yml`: every push to main builds the Windows
+  installer (MSYS2 UCRT64, first real compile of the Win32 backends)
+  and the Linux tarball as downloadable artifacts; pushing a `v*` tag
+  attaches both to a GitHub Release. This is the supported way to ship
+  binaries — local packaging scripts are for development.
 
 ## Conventions
 
