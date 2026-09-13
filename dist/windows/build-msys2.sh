@@ -85,9 +85,19 @@ echo ">> bundled $COPIED DLLs"
 if command -v makensis > /dev/null 2>&1; then
     echo ">> building installer"
     cd "$ROOT/dist/windows"
+    # /D passes a DEFINE to the script (the .nsi reads ${OUTFILE}).
+    # Forward slashes on purpose: MSYS2 mangles backslashes in
+    # arguments before native tools see them.
     makensis -DVERSION="$VERSION" -DSTAGE="../out/windows" \
-        -OUTFILE="$ROOT/dist/out/$INSTALLER" cabal-overlay.nsi
-    echo ">> wrote dist/out/$INSTALLER"
+        -DOUTFILE="../out/$INSTALLER" cabal-overlay.nsi
+    # Trust, then VERIFY: a silent makensis failure must not leave a
+    # green pipeline with no installer (this exact bug shipped once).
+    if [ -f "$ROOT/dist/out/$INSTALLER" ]; then
+        echo ">> wrote dist/out/$INSTALLER"
+    else
+        echo "!! makensis finished but $INSTALLER does not exist" >&2
+        exit 1
+    fi
 else
     echo ">> makensis not found — skipping the installer."
     echo "   Install it with: pacman -S nsis"
