@@ -340,7 +340,28 @@ void present(GtkApplication* app, const AppConfig& config,
                              gtk_label_new("Hotkey"));
     gtk_notebook_append_page(GTK_NOTEBOOK(notebook), build_autoclick_page(config, config_path),
                              gtk_label_new("Autoclick"));
-    gtk_window_set_child(g_window, notebook);
+
+    // Bottom bar: actions that affect the whole app rather than one
+    // config section. Quit goes through the D-Bus-exported GAction so
+    // there is exactly one shutdown path, however it is triggered.
+    auto* root = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+    gtk_box_append(GTK_BOX(root), notebook);
+    auto* footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+    gtk_widget_set_margin_start(footer, 16);
+    gtk_widget_set_margin_end(footer, 16);
+    gtk_widget_set_margin_top(footer, 8);
+    gtk_widget_set_margin_bottom(footer, 8);
+    auto* quit_button = gtk_button_new_with_label("Quit overlay");
+    gtk_widget_set_tooltip_text(quit_button, "Shut down the overlay "
+                                              "(also: D-Bus action quit)");
+    g_signal_connect(quit_button, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer) {
+                         g_action_group_activate_action(G_ACTION_GROUP(g_app),
+                                                        "quit", nullptr);
+                     }), nullptr);
+    gtk_box_append(GTK_BOX(footer), quit_button);
+    gtk_box_append(GTK_BOX(root), footer);
+    gtk_window_set_child(g_window, root);
 
     // Drop the singleton when the window closes so the next open
     // re-populates from a fresh config snapshot.

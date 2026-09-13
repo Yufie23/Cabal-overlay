@@ -14,7 +14,8 @@
 //   - The "toggle-interactive" D-Bus action flips to clickable mode
 //     (bind it to a KDE custom shortcut). While interactive, clicking
 //     the bar returns to click-through mode.
-//   - Close from a terminal: pkill cabal-overlay
+//   - Close: the "Quit" button in the settings window, the quit
+//     D-Bus action, or from a terminal: pkill cabal-overlay
 //
 // This file only orchestrates: it loads the config, wires GTK
 // signals, the D-Bus action and the 1-second timer. Time logic lives
@@ -409,6 +410,12 @@ void on_calibrate_click(GSimpleAction*, GVariant*, gpointer) {
               "dialog position");
 }
 
+// Graceful shutdown, also exported over D-Bus so scripts and desktop
+// shortcuts can quit the overlay (pkill stays the fallback).
+void on_quit(GSimpleAction*, GVariant*, gpointer) {
+    g_application_quit(g_app);
+}
+
 // g_timeout_add callback. GLib timers expect this exact signature:
 // returning G_SOURCE_CONTINUE re-arms the timer for another second;
 // returning G_SOURCE_REMOVE would stop it.
@@ -699,6 +706,14 @@ int main(int argc, char* argv[]) {
         {
             .name           = "calibrate-click",
             .activate       = on_calibrate_click,
+            .parameter_type = nullptr,
+            .state          = nullptr,
+            .change_state   = nullptr,
+            .padding        = {0, 0, 0},
+        },
+        {
+            .name           = "quit",
+            .activate       = on_quit,
             .parameter_type = nullptr,
             .state          = nullptr,
             .change_state   = nullptr,
