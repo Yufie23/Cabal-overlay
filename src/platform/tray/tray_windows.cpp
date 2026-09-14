@@ -43,7 +43,10 @@ void add_icon() {
     icon.uID = kIconId;
     icon.uFlags = NIF_ICON | NIF_MESSAGE | NIF_TIP | NIF_SHOWTIP;
     icon.uCallbackMessage = kTrayMessage;
-    icon.hIcon = LoadIconW(nullptr, IDI_APPLICATION); // stock icon for now
+    // IDI_APPLICATION is the A-variant macro under MinGW headers
+    // (LPSTR), unusable with LoadIconW — use the wide MAKEINTRESOURCE
+    // directly; 32512 is the documented stock application icon id.
+    icon.hIcon = LoadIconW(nullptr, MAKEINTRESOURCEW(32512));
     wcsncpy(icon.szTip, L"Cabal Overlay — right-click for options",
             std::size(icon.szTip) - 1);
     icon.szTip[std::size(icon.szTip) - 1] = L'\0'; // wcsncpy may not terminate
