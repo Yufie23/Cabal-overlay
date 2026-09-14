@@ -106,6 +106,12 @@ BOOL CALLBACK on_enum_window(HWND window, LPARAM context_ptr) {
         }
         return TRUE;
     }
+    // Title fallback. Exclude our OWN windows first: the overlay
+    // toplevels are titled "cabal-overlay.exe" and would otherwise
+    // register as "the game".
+    DWORD pid = 0;
+    GetWindowThreadProcessId(window, &pid);
+    if (pid == GetCurrentProcessId()) return TRUE;
     wchar_t title[256] = {};
     const int length = GetWindowTextLengthW(window);
     if (length <= 0 || length >= static_cast<int>(std::size(title)))

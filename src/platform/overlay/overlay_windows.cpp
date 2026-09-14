@@ -105,8 +105,17 @@ AnchorEdges parse_anchor(const std::string& anchor) {
 }
 
 // Resolves the placement into an absolute top-left corner against
-// the primary screen size. "custom" margins ARE the absolute corner.
+// the primary screen size. "custom" margins ARE the absolute corner
+// — and "custom" contains no edge keyword, so without the explicit
+// check it would silently fall through to CENTERING (confirmed in a
+// Wine trace: the panel landed at (screen-size)/2 instead of its
+// configured position).
 void resolve_position(const Win32Overlay* state, int* x, int* y) {
+    if (state->placement.anchor == "custom") {
+        *x = state->placement.margin_x;
+        *y = state->placement.margin_y;
+        return;
+    }
     const int screen_w = GetSystemMetrics(SM_CXSCREEN);
     const int screen_h = GetSystemMetrics(SM_CYSCREEN);
     int width = 0;
@@ -130,7 +139,11 @@ void apply_window_styles(Win32Overlay* state) {
     const HWND hwnd = hwnd_of(state->window);
     if (hwnd == nullptr) return;
 
-    SetWindowLongPtrW(hwnd, GWL_STYLE, WS_POPUP);
+    // WS_POPUP replaces the decorated frame wholesale, but WS_VISIBLE
+    // must survive: a style write that drops it hides the window even
+    // when everything else is right (this exact bug shipped in 0.1.1).
+    const LONG_PTR current = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    SetWindowLongPtrW(hwnd, GWL_STYLE, WS_POPUP | (current & WS_VISIBLE));
     LONG_PTR exstyle = WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_LAYERED;
     if (!state->interactive) exstyle |= WS_EX_TRANSPARENT;
     SetWindowLongPtrW(hwnd, GWL_EXSTYLE, exstyle);
@@ -159,6 +172,15 @@ void on_realize(GtkWidget*, gpointer state_ptr) {
     state->realized = true;
     apply_window_styles(state);
     apply_position(state);
+}
+
+// GDK re-applies its own geometry whenever the toplevel re-lays out
+// (content changes — the clock label ticks every second — or at
+// present time), stomping our SetWindowPos placement. Re-applying on
+// default size changes keeps the overlay where the config put it.
+void on_size_changed(GtkWidget*, GParamSpec*, gpointer state_ptr) {
+    auto* state = static_cast<Win32Overlay*>(state_ptr);
+    if (state->realized) apply_position(state);
 }
 
 // ── Drag-to-move ─────────────────────────────────────────────
@@ -220,6 +242,12 @@ void overlay_init(GtkWindow* window) {
     // The HWND does not exist until the window is realized; the
     // style surgery and first positioning happen then.
     g_signal_connect(window, "realize", G_CALLBACK(on_realize), state);
+    // GDK stomps our placement on every relayout (see on_size_changed);
+    // re-apply after each size change and after present.
+    g_signal_connect(window, "notify::default-width",
+                     G_CALLBACK(on_size_changed), state);
+    g_signal_connect(window, "notify::default-height",
+                     G_CALLBACK(on_size_changed), state);
 }
 
 Placement overlay_apply_placement(GtkWindow* window, Placement placement) {
