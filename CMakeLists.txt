@@ -10,7 +10,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(cabal-overlay
-    VERSION 0.1.0
+    VERSION 0.1.1
     DESCRIPTION "Native game overlay for Cabal Online (private server)"
     LANGUAGES CXX
 )
@@ -71,6 +71,7 @@ if(WIN32)
         src/platform/pointer/pointer_windows.cpp
         src/platform/game_watch/game_watch_windows.cpp
         src/platform/sound/sound_windows.cpp
+        src/platform/tray/tray_windows.cpp
     )
 else()
     pkg_check_modules(LAYER_SHELL REQUIRED IMPORTED_TARGET gtk4-layer-shell-0)
@@ -86,6 +87,7 @@ else()
         src/platform/pointer/pointer_x11.cpp
         src/platform/game_watch/game_watch_x11.cpp
         src/platform/sound/sound_canberra.cpp
+        src/platform/tray/tray_none.cpp
     )
 endif()
 
@@ -93,9 +95,10 @@ add_executable(cabal-overlay ${APP_SOURCES} ${PLATFORM_SOURCES})
 
 if(WIN32)
     # GUI subsystem (no console window behind the overlay) and the
-    # Win32 libraries the backends call directly.
+    # Win32 libraries the backends call directly (shell32 for the
+    # tray icon's Shell_NotifyIconW).
     set_target_properties(cabal-overlay PROPERTIES WIN32_EXECUTABLE TRUE)
-    target_link_libraries(cabal-overlay PRIVATE user32 gdi32 winmm)
+    target_link_libraries(cabal-overlay PRIVATE user32 gdi32 winmm shell32)
 else()
     target_link_libraries(cabal-overlay PRIVATE
         PkgConfig::LAYER_SHELL

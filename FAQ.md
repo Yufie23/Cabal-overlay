@@ -15,6 +15,18 @@ To install anyway:
 
 That's it — two extra clicks, once per installer version.
 
+## The app is running but nothing shows up (Windows)
+
+Check the **system tray** (the overflow area next to the clock — click
+the `^` arrow): the overlay has no taskbar entry by design, the tray
+icon is its handle. Right-click → *Quit* closes it.
+
+If the overlay itself does not draw even with the game in focus: it
+hides whenever the game window is not focused
+(`overlay.show_only_when_game_focused` in the settings). Since 0.1.1 a
+game the watcher cannot find means *visible*, so detection failures can
+no longer leave it invisible — if you are on 0.1.0, upgrade.
+
 ## My antivirus flags the installer or one of the DLLs
 
 Almost certainly a false positive. The installer bundles 61 GTK

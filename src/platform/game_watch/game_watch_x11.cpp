@@ -143,6 +143,10 @@ bool focused_is_in_game(Window focused) {
 
 // One focus sweep. Out: whether the game window exists at all right
 // now (running and viewable). Returns: the game holds the X focus.
+//
+// A caller must treat "game not found" as VISIBLE, not hidden — if the
+// detection ever fails to find the client (rename, launcher quirk),
+// an invisible overlay is also an unclosable one.
 bool sweep_focus(bool* game_running) {
     if (g_game_window == None)
         g_game_window = find_game_window();
@@ -177,7 +181,10 @@ void set_reported_focus(bool focused) {
 gboolean on_poll(gpointer) {
     bool game_running = false;
     const bool focused = sweep_focus(&game_running);
-    if (focused) {
+    // "Game not found" reports VISIBLE, on purpose: when we cannot
+    // see the game we cannot know what the user is doing, and an
+    // overlay hidden by a broken watcher is an unclosable process.
+    if (focused || !game_running) {
         g_misses = 0;
         set_reported_focus(true);
     } else if (g_focused && ++g_misses >= kHideDebounceMisses) {
@@ -209,9 +216,11 @@ bool game_watch_start(std::function<void(bool)> on_change) {
     // Initial synchronous sweep: the app reads the result through
     // game_has_focus_now() to set starting visibility before the
     // windows are presented, so there is no flash of a visible
-    // overlay over the desktop.
+    // overlay over the desktop. "Game not found" means visible (see
+    // on_poll): starting before the game does is the normal case.
     bool game_running = false;
-    g_focused = sweep_focus(&game_running);
+    const bool focused = sweep_focus(&game_running);
+    g_focused = focused || !game_running;
 
     g_poll_source = g_timeout_add(kPollIntervalMs, on_poll, nullptr);
     return true;

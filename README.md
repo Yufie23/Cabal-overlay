@@ -67,6 +67,10 @@ Run `cabal-overlay-<version>-setup.exe` and start the overlay from the
 Start Menu or the desktop shortcut. Everything (including the GTK
 runtime DLLs) is bundled; no separate installs needed.
 
+The app lives in the **system tray** (no taskbar icon — the overlay
+surfaces are borderless floaters by design): right-click the tray icon
+for *Open settings* and *Quit*, double-click it to open the settings.
+
 Your settings live in `%APPDATA%\cabal-overlay\` and are kept across
 updates.
 

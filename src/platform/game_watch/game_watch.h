@@ -33,6 +33,11 @@ namespace platform {
 // after a short debounce, whenever that changes; also when the game
 // window disappears entirely (crash, logout to character select).
 //
+// GAME NOT FOUND = VISIBLE, always. A watcher that cannot see the
+// client (rename, launcher quirk, game simply not started yet) must
+// never hide the overlay — invisible AND unclosable is the worst
+// failure mode this app can have.
+//
 // The initial state is available synchronously via
 // game_has_focus_now() right after this call, so the app can decide
 // the windows' starting visibility before presenting them.

@@ -6,16 +6,24 @@
 // direct: GetForegroundWindow() returns the single HWND with
 // keyboard focus across the whole desktop.
 //
-// Finding the game window: EnumWindows over every top-level window,
-// matching "cabal" (case-insensitive) against the window title —
-// the Wine WM_CLASS trick has no Win32 equivalent, but the client
-// window title does contain it ("Cabal Online" / "CABAL ...").
+// Finding the game window, two passes over EnumWindows, most precise
+// first:
+//
+//   1. Process name: QueryFullProcessImageNameW on the window's owner
+//      PID, basename contains "cabalmain" (survives any custom window
+//      title the server launcher sets — the Wine WM_CLASS trick from
+//      the X11 backend has no Win32 equivalent, this is it).
+//   2. Title contains "cabal" (case-insensitive): fallback for
+//      renamed executables.
+//
 // The search re-runs on every poll while unknown, so starting the
 // overlay before the game is fine.
 //
 // Hiding is debounced (~3 polls) like the X11 backend: transient
 // focus flickers (alt-tab previews, taskbar peeks) must not strobe
-// the overlay. Gaining focus reports immediately.
+// the overlay. Gaining focus reports immediately. "Game not found"
+// reports VISIBLE (see on_poll): an overlay hidden by a broken
+// detector is an unclosable process.
 // ─────────────────────────────────────────────────────────────
 
 #include "platform/game_watch/game_watch.h"
@@ -55,19 +63,56 @@ bool contains_nocase(std::wstring_view haystack, std::wstring_view needle) {
     return false;
 }
 
-// EnumWindows callback. Keeps the first visible top-level window
-// whose title contains "cabal"; returns FALSE once found to stop the
-// enumeration.
-BOOL CALLBACK on_enum_window(HWND window, LPARAM found_ptr) {
-    auto* found = reinterpret_cast<HWND*>(found_ptr); // contract: LPARAM carries the out-param address
+// Does this window belong to the game PROCESS? Asking the owning
+// process for its image name is far more precise than the window
+// title: a browser tab titled "Cabal Online forum" is not the game.
+bool window_belongs_to_game(HWND window) {
+    DWORD pid = 0;
+    GetWindowThreadProcessId(window, &pid);
+    if (pid == 0) return false;
+    HANDLE process =
+        OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (process == nullptr) return false;
+    wchar_t path[MAX_PATH] = {};
+    DWORD size = static_cast<DWORD>(std::size(path));
+    bool match = false;
+    if (QueryFullProcessImageNameW(process, 0, path, &size) != 0) {
+        const std::wstring_view full(path);
+        const std::size_t sep = full.find_last_of(L"\\/");
+        const std::wstring_view basename =
+            full.substr(sep == std::wstring_view::npos ? 0 : sep + 1);
+        match = contains_nocase(basename, L"cabalmain");
+    }
+    CloseHandle(process);
+    return match;
+}
+
+// EnumWindows callback. Matches by process name (pass 1) or by title
+// (pass 2, `by_title`); keeps the first hit and stops.
+struct FindContext {
+    HWND result = nullptr;
+    bool by_title = false;
+};
+
+BOOL CALLBACK on_enum_window(HWND window, LPARAM context_ptr) {
+    // Contract: LPARAM carries a FindContext out-param address.
+    auto* context = reinterpret_cast<FindContext*>(context_ptr);
     if (!IsWindowVisible(window)) return TRUE;
+
+    if (!context->by_title) {
+        if (window_belongs_to_game(window)) {
+            context->result = window;
+            return FALSE;
+        }
+        return TRUE;
+    }
     wchar_t title[256] = {};
     const int length = GetWindowTextLengthW(window);
     if (length <= 0 || length >= static_cast<int>(std::size(title)))
         return TRUE;
     GetWindowTextW(window, title, static_cast<int>(std::size(title)));
     if (contains_nocase(title, L"cabal")) {
-        *found = window;
+        context->result = window;
         return FALSE;
     }
     return TRUE;
@@ -76,10 +121,15 @@ BOOL CALLBACK on_enum_window(HWND window, LPARAM found_ptr) {
 // Scans top-level windows for the game. Re-run on every poll while
 // the handle is unknown: the overlay may start before the game.
 HWND find_game_window() {
-    HWND found = nullptr;
+    FindContext process_pass;
     EnumWindows(on_enum_window,
-                reinterpret_cast<LPARAM>(&found)); // contract: pass the out-param address through LPARAM
-    return found;
+                reinterpret_cast<LPARAM>(&process_pass)); // contract: out-param through LPARAM
+    if (process_pass.result != nullptr) return process_pass.result;
+
+    FindContext title_pass { .by_title = true };
+    EnumWindows(on_enum_window,
+                reinterpret_cast<LPARAM>(&title_pass)); // contract: out-param through LPARAM
+    return title_pass.result;
 }
 
 // One focus sweep. Out: whether the game window exists right now.
@@ -109,7 +159,10 @@ void set_reported_focus(bool focused) {
 gboolean on_poll(gpointer) {
     bool game_running = false;
     const bool focused = sweep_focus(&game_running);
-    if (focused) {
+    // "Game not found" reports VISIBLE, on purpose: when we cannot
+    // see the game we cannot know what the user is doing, and an
+    // overlay hidden by a broken watcher is an unclosable process.
+    if (focused || !game_running) {
         g_misses = 0;
         set_reported_focus(true);
     } else if (g_focused && ++g_misses >= kHideDebounceMisses) {
@@ -131,9 +184,11 @@ bool game_watch_start(std::function<void(bool)> on_change) {
     // Initial synchronous sweep: the app reads the result through
     // game_has_focus_now() to set starting visibility before the
     // windows are presented, so there is no flash of a visible
-    // overlay over the desktop.
+    // overlay over the desktop. "Game not found" means visible (see
+    // on_poll): starting before the game does is the normal case.
     bool game_running = false;
-    g_focused = sweep_focus(&game_running);
+    const bool focused = sweep_focus(&game_running);
+    g_focused = focused || !game_running;
 
     g_poll_source = g_timeout_add(kPollIntervalMs, on_poll, nullptr);
     return true; // no display to open: the API is always available

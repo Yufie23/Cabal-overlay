@@ -14,8 +14,9 @@
 //   - The "toggle-interactive" D-Bus action flips to clickable mode
 //     (bind it to a KDE custom shortcut). While interactive, clicking
 //     the bar returns to click-through mode.
-//   - Close: the "Quit" button in the settings window, the quit
-//     D-Bus action, or from a terminal: pkill cabal-overlay
+//   - Close: the "Quit" button in the settings window, the tray icon
+//     menu (Windows), the quit D-Bus action, or from a terminal:
+//     pkill cabal-overlay
 //
 // This file only orchestrates: it loads the config, wires GTK
 // signals, the D-Bus action and the 1-second timer. Time logic lives
@@ -48,6 +49,7 @@
 #include "platform/overlay/overlay.h"
 #include "platform/pointer/pointer.h"
 #include "platform/sound/sound.h"
+#include "platform/tray/tray.h"
 #include "time/schedule.h"
 #include "model/state.h"
 #include "model/tasks.h"
@@ -776,6 +778,17 @@ void on_activate(GtkApplication* app, gpointer) {
         break;
     }
 
+    // System tray presence (Windows only; a no-op on Linux, see
+    // platform/tray/tray.h): the overlay surfaces have no taskbar
+    // entry by design, so the tray icon is the app's lifecycle
+    // handle — right-click for Settings / Quit.
+    platform::tray_start(platform::TrayActions{
+        .on_show_settings =
+            [] { settings::present(GTK_APPLICATION(g_app), g_config,
+                                   kConfigPath); },
+        .on_quit = [] { g_application_quit(g_app); },
+    });
+
     // Catch up on resets that happened while the app was closed.
     if (apply_resets(g_state, std::chrono::system_clock::now()))
         persist_state();
@@ -838,6 +851,13 @@ int main(int argc, char* argv[]) {
     // (dev.cabal.Overlay) and single-instance behavior for free.
     auto* app = gtk_application_new(kApplicationId, G_APPLICATION_DEFAULT_FLAGS);
     g_signal_connect(app, "activate", G_CALLBACK(on_activate), nullptr);
+    // Shell_NotifyIcon icons ghost until hovered if the process dies
+    // without NIM_DELETE — remove ours on the way out.
+    g_signal_connect(app, "shutdown",
+                     G_CALLBACK(+[](GtkApplication*, gpointer) {
+                         platform::tray_stop();
+                     }),
+                     nullptr);
 
     // GAction entries registered on the app are automatically exported
     // over D-Bus (interface org.gtk.Actions). This is the public remote

@@ -50,9 +50,14 @@ No unchecked type punning. In practice:
   via SetLayeredWindowAttributes — per-pixel CSS alpha has no Win32
   equivalent without owning the paint pipeline), `platform/pointer/pointer_windows.cpp`
   (GetCursorPos/GetAsyncKeyState — no X11 blind spot, works globally),
-  `platform/game_watch/game_watch_windows.cpp` (EnumWindows title match + GetForegroundWindow),
+  `platform/game_watch/game_watch_windows.cpp` (EnumWindows by owner-process
+  image name — basename contains "cabalmain" — with a title fallback),
   `platform/hotkey/hotkey_windows.cpp` (RegisterHotKey on a message-only HWND; WM_HOTKEY is
-  dispatched by GTK's own message pump, same thread as the main loop).
+  dispatched by GTK's own message pump, same thread as the main loop),
+  `platform/tray/tray_windows.cpp` (Shell_NotifyIconW + popup menu on a
+  message-only sink; the overlay surfaces have no taskbar entry by
+  design, so the tray icon IS the app's lifecycle handle — Settings /
+  Quit).
   Verified on the first CI Windows build (MinGW 16.2, GTK 4.24):
   `gdk_win32_surface_get_handle` is the correct GTK4 API for the HWND.
 - Building for Windows: inside MSYS2 UCRT64 (`pacman -S
@@ -79,6 +84,11 @@ No unchecked type punning. In practice:
   and reappears when the game is focused again. Hiding is debounced ~750 ms;
   interactive mode suppresses it (the game is unfocused by definition while
   the user clicks the overlay). Config: `overlay.show_only_when_game_focused`.
+  HARD RULE on both backends: game-not-found reports VISIBLE — a watcher
+  that cannot see the client must never make the app invisible and
+  unclosable (this was the 0.1.0 Windows testers' showstopper: the
+  title-match detection never found the client, and with no tray icon
+  there was no way out).
 - Later phases read game memory from outside via `process_vm_readv()` /
   `/proc/<pid>/mem`; offsets found with PINCE/scanmem. See `docs/01-overlay-estatico.md`
   for the original standalone-widget plan (superseded for phase 1) and the
