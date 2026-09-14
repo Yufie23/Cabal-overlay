@@ -2,10 +2,13 @@
 // overlay_windows.cpp — always-on-top overlay via Win32 styles
 //
 // The Win32 equivalent of the layer-shell backend. The GTK window's
-// native HWND is turned into a floating overlay with four pieces of
-// window-style surgery, applied once at realize time:
+// native HWND is turned into a floating overlay with three pieces:
 //
-//   WS_POPUP         → no title bar, no border, no taskbar entry
+//   gtk_window_set_decorated(FALSE)
+//                    → no title bar, no border, no taskbar entry.
+//                      Done the GTK way because GDK re-asserts its own
+//                      frame style on relayout and wins any GWL_STYLE
+//                      fight (learned the hard way under Wine).
 //   WS_EX_TOPMOST    → floats above normal windows (always-on-top)
 //   WS_EX_NOACTIVATE → clicking never steals keyboard focus,
 //                       so the game keeps it in every mode
@@ -27,7 +30,9 @@
 // POSITIONING: unlike layer-shell margins (edge distances),
 // SetWindowPos takes an absolute top-left corner — the margin math
 // resolves HERE, once, so no custom→edge margin re-base is needed
-// on this backend.
+// on this backend. GDK also repositions toplevels at its own
+// discretion (present, relayouts — the clock label ticks every
+// second), so a 500 ms guard timer re-asserts position and styles.
 //
 // DRAG: same GtkGestureDrag incremental recurrence as the Wayland
 // backend (see the comment there): offsets are measured against the
@@ -136,15 +141,13 @@ void resolve_position(const Win32Overlay* state, int* x, int* y) {
 
 // Re-styles the HWND into an overlay window. Idempotent: safe on
 // every realize, harmless if called twice with the same flags.
+// NOTE: GWL_STYLE is no longer touched here — decorations are removed
+// the GTK way (gtk_window_set_decorated in overlay_init), because GDK
+// re-asserts its own frame style on relayout and wins every fight.
 void apply_window_styles(Win32Overlay* state) {
     const HWND hwnd = hwnd_of(state->window);
     if (hwnd == nullptr) return;
 
-    // WS_POPUP replaces the decorated frame wholesale, but WS_VISIBLE
-    // must survive: a style write that drops it hides the window even
-    // when everything else is right (this exact bug shipped in 0.1.1).
-    const LONG_PTR current = GetWindowLongPtrW(hwnd, GWL_STYLE);
-    SetWindowLongPtrW(hwnd, GWL_STYLE, WS_POPUP | (current & WS_VISIBLE));
     LONG_PTR exstyle = WS_EX_TOPMOST | WS_EX_NOACTIVATE | WS_EX_LAYERED;
     if (!state->interactive) exstyle |= WS_EX_TRANSPARENT;
     SetWindowLongPtrW(hwnd, GWL_EXSTYLE, exstyle);
@@ -195,11 +198,11 @@ gboolean on_placement_guard(gpointer state_ptr) {
     const HWND hwnd = hwnd_of(state->window);
     if (hwnd == nullptr) return G_SOURCE_CONTINUE;
 
-    // Styles drift too: GDK re-styles the toplevel on relayout and the
-    // decorated frame comes back (seen under Wine: title bar with
-    // min/max/close buttons on what should be a borderless overlay).
-    const LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
-    if ((style & WS_CAPTION) != 0 || (style & WS_THICKFRAME) != 0)
+    // The EX styles are ours alone (GDK never manages topmost/
+    // layered/transparent), but verify cheaply anyway — one missed
+    // re-apply and the overlay stops being click-through.
+    const LONG_PTR exstyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    if ((exstyle & WS_EX_TOPMOST) == 0)
         apply_window_styles(state);
 
     RECT rect {};
@@ -275,6 +278,13 @@ void overlay_init(GtkWindow* window) {
                                     nullptr, nullptr, false, 0, 0 };
     g_object_set_data_full(G_OBJECT(window), "cabal-win32-overlay", state,
                            delete_overlay);
+
+    // The GTK-sanctioned way to a borderless window: telling GTK means
+    // GDK creates the toplevel without decorations and NEVER restores
+    // a frame — no GWL_STYLE fight (that surgery lost to GDK's own
+    // re-styling on every relayout; seen live under Wine).
+    gtk_window_set_decorated(window, FALSE);
+
     // The HWND does not exist until the window is realized; the
     // style surgery and first positioning happen then.
     g_signal_connect(window, "realize", G_CALLBACK(on_realize), state);
