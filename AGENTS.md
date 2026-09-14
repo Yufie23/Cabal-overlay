@@ -115,6 +115,36 @@ No unchecked type punning. In practice:
   attaches both to a GitHub Release. This is the supported way to ship
   binaries — local packaging scripts are for development.
 
+## Windows smoke testing (no Windows PC needed)
+
+The game runs under Bottles (UMU prefix) on this machine, so the real
+Windows CI artifact can be smoke-tested under Wine locally:
+
+1. Download the bundle: `gh run download <run-id> -n cabal-overlay-windows`
+2. Stage it INSIDE the prefix (the Bottles flatpak sandbox cannot see
+   host /tmp or ~): copy to `<prefix>/drive_c/overlay-smoke/`.
+   Prefix: `~/.var/app/com.usebottles.bottles/data/bottles/umu/prefixes/56cf5bc8-…/`
+   Runner: `~/.var/…/data/bottles/runners/soda-11.0-3/bin/wine`
+3. Kill the native overlay first (same D-Bus name dev.cabal.Overlay —
+   single-instance), then run:
+   `GDK_BACKEND=win32 WINEPREFIX=<prefix> <runner>/wine 'C:\overlay-smoke\cabal-overlay.exe'`
+   (the GDK_BACKEND pin is also hard-coded in main.cpp for _WIN32, so
+   newer builds do not need it)
+4. Verify VISUALLY (a running process is not enough — the invisible-
+   window bugs of 0.1.1 passed that bar): `spectacle -b -n -o shot.png`.
+   Wine-side window forensics: `WINEDEBUG=+win` traces every
+   CreateWindow/SetWindowPos/ShowWindow — that is how the WS_VISIBLE
+   strip, the custom-anchor centering and the GDK geometry stomps were
+   found. KWin window list: `qdbus org.kde.KWin /KWin supportInformation`.
+5. Cleanup: kill by `ps -eo pid,comm | awk '$2=="cabal-overlay.e"'`
+   (NEVER `pkill -f` — the pattern matches your own shell's command
+   line), remove overlay-smoke from the prefix, restart the native
+   overlay.
+
+Known Wine-only quirks (NOT bugs in our code): garbled glyphs (the
+prefix lacks the fonts; real Windows uses Segoe UI) and keyboard-layout
+registry warnings.
+
 ## Conventions
 
 - The vendored HTML tracker (`Prosperity_Task_Tracker.v6.1/`) is a read-only

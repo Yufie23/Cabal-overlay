@@ -847,6 +847,15 @@ int main(int argc, char* argv[]) {
     // any widget that references them.
     g_actions = make_goals_actions();
 
+    // Under Wine with a Wayland session, GTK4's backend probing tries
+    // wayland first and hard-fails instead of falling through to
+    // win32 ("Failed to open display"). Pin the backend: on Windows
+    // only win32 ever makes sense. Must run before GTK opens any
+    // display (i.e. before gtk_application_new runs its activate).
+#ifdef _WIN32
+    gdk_set_allowed_backends("win32");
+#endif
+
     // GtkApplication gives us the GLib main loop, a unique D-Bus name
     // (dev.cabal.Overlay) and single-instance behavior for free.
     auto* app = gtk_application_new(kApplicationId, G_APPLICATION_DEFAULT_FLAGS);
