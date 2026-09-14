@@ -194,6 +194,14 @@ gboolean on_placement_guard(gpointer state_ptr) {
     if (!state->realized) return G_SOURCE_CONTINUE;
     const HWND hwnd = hwnd_of(state->window);
     if (hwnd == nullptr) return G_SOURCE_CONTINUE;
+
+    // Styles drift too: GDK re-styles the toplevel on relayout and the
+    // decorated frame comes back (seen under Wine: title bar with
+    // min/max/close buttons on what should be a borderless overlay).
+    const LONG_PTR style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+    if ((style & WS_CAPTION) != 0 || (style & WS_THICKFRAME) != 0)
+        apply_window_styles(state);
+
     RECT rect {};
     if (GetWindowRect(hwnd, &rect) == 0) return G_SOURCE_CONTINUE;
     int want_x = 0;
