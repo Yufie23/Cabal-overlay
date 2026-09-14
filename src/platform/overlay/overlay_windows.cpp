@@ -60,6 +60,7 @@ struct Win32Overlay {
     bool converted = false; // placement switched to absolute "custom"
     int abs_x = 0;          // last absolute top-left we positioned at
     int abs_y = 0;
+    guint guard_source = 0; // placement guard timer (see on_placement_guard)
 };
 
 void delete_overlay(gpointer data) {
@@ -183,6 +184,33 @@ void on_size_changed(GtkWidget*, GParamSpec*, gpointer state_ptr) {
     if (state->realized) apply_position(state);
 }
 
+// Placement guard: GDK moves the toplevel at its own discretion too
+// (showing, relayouts) and GTK4 does not track window positions for
+// us, so instead of racing its WndProc we poll every 500 ms: if the
+// window is not where the placement says, put it back. Self-healing,
+// loop-proof (we always converge to the same target).
+gboolean on_placement_guard(gpointer state_ptr) {
+    auto* state = static_cast<Win32Overlay*>(state_ptr);
+    if (!state->realized) return G_SOURCE_CONTINUE;
+    const HWND hwnd = hwnd_of(state->window);
+    if (hwnd == nullptr) return G_SOURCE_CONTINUE;
+    RECT rect {};
+    if (GetWindowRect(hwnd, &rect) == 0) return G_SOURCE_CONTINUE;
+    int want_x = 0;
+    int want_y = 0;
+    resolve_position(state, &want_x, &want_y);
+    if (rect.left != want_x || rect.top != want_y) apply_position(state);
+    return G_SOURCE_CONTINUE;
+}
+
+void on_destroy(GtkWidget*, gpointer state_ptr) {
+    auto* state = static_cast<Win32Overlay*>(state_ptr);
+    if (state->guard_source != 0) {
+        g_source_remove(state->guard_source);
+        state->guard_source = 0;
+    }
+}
+
 // ── Drag-to-move ─────────────────────────────────────────────
 // See the block comment in overlay_wayland.cpp for the full
 // explanation of the incremental recurrence; it applies verbatim
@@ -248,6 +276,11 @@ void overlay_init(GtkWindow* window) {
                      G_CALLBACK(on_size_changed), state);
     g_signal_connect(window, "notify::default-height",
                      G_CALLBACK(on_size_changed), state);
+    // GDK also moves toplevels outside of size changes (present,
+    // show); the guard timer settles every disagreement within 500 ms.
+    state->guard_source = g_timeout_add(500, on_placement_guard, state);
+    // Outlives the window: remove it before the state is freed.
+    g_signal_connect(window, "destroy", G_CALLBACK(on_destroy), state);
 }
 
 Placement overlay_apply_placement(GtkWindow* window, Placement placement) {
