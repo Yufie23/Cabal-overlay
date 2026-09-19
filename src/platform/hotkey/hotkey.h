@@ -11,7 +11,9 @@
 // Each platform gets its own implementation:
 //
 //   hotkey_linux.cpp       → /dev/input via evdev + GLib fd sources
-//   hotkey_windows.cpp   → RegisterHotKey + a message-only window
+//   hotkey_windows.cpp   → RegisterHotKey (message path) +
+//                          GetAsyncKeyState polling (driver state,
+//                          survives fullscreen DirectInput grabs)
 //
 // SECURITY NOTE (Linux evdev backend): this capability is identical
 // to what a keylogger uses — reading /dev/input shows every keystroke

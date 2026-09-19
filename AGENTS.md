@@ -52,8 +52,11 @@ No unchecked type punning. In practice:
   (GetCursorPos/GetAsyncKeyState — no X11 blind spot, works globally),
   `platform/game_watch/game_watch_windows.cpp` (EnumWindows by owner-process
   image name — basename contains "cabalmain" — with a title fallback),
-  `platform/hotkey/hotkey_windows.cpp` (RegisterHotKey on a message-only HWND; WM_HOTKEY is
-  dispatched by GTK's own message pump, same thread as the main loop),
+  `platform/hotkey/hotkey_windows.cpp` (dual delivery: RegisterHotKey on a
+  message-only HWND plus GetAsyncKeyState polling every 50 ms with a
+  shared 400 ms cooldown — fullscreen Cabal grabs the keyboard with
+  exclusive DirectInput, which kills the message path the same way it
+  kills the Win key; the poll reads driver-level state and survives),
   `platform/tray/tray_windows.cpp` (Shell_NotifyIconW + popup menu on a
   message-only sink; the overlay surfaces have no taskbar entry by
   design, so the tray icon IS the app's lifecycle handle — Settings /

@@ -1,10 +1,27 @@
 // ─────────────────────────────────────────────────────────────
-// hotkey_windows.cpp — global hotkey via RegisterHotKey
+// hotkey_windows.cpp — global hotkey via RegisterHotKey AND
+// GetAsyncKeyState polling
 //
-// The Win32 equivalent of the Linux evdev backend, without any of
-// its permission problems: RegisterHotKey asks the OS (not a device
-// file) for a system-wide key combo, works while any window — the
-// game included — holds the focus, and needs no special groups.
+// Two delivery paths for one combo, because fullscreen Cabal kills
+// the first: DirectInput's exclusive keyboard grab suppresses the
+// whole window-message path (the same reason the Win key and
+// Ctrl+Shift+Esc die in game), and RegisterHotKey rides that path.
+//
+//   RegisterHotKey   → fast path, works while the game is windowed
+//                      or another app holds focus.
+//   GetAsyncKeyState → polls the driver-level key state table, which
+//                      an exclusive DirectInput grab CANNOT suppress
+//                      (the game itself reads from there). A GLib
+//                      timer checks the combo every 50 ms and fires
+//                      on the press edge. Same API family the
+//                      dgcheck pointer sensor already uses.
+//
+// Both share one fire() with a 400 ms cooldown: when the message
+// path IS alive (game windowed, desktop focused) one physical press
+// can arrive twice, and a double toggle cancels itself out.
+//
+// Anti-cheat posture: no hooks, no injection, no synthetic input —
+// nothing macro-shaped for XIGNCODE3 to look at.
 //
 // WM_HOTKEY arrives as a window message, so a message-only window
 // (HWND_MESSAGE: invisible, no taskbar entry, purely a message
@@ -25,6 +42,7 @@
 #include <windows.h>
 
 #include <cctype>
+#include <chrono>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -41,6 +59,42 @@ Combo g_combo;
 std::function<void()> g_on_trigger;
 HWND g_sink = nullptr;       // message-only window receiving WM_HOTKEY
 constexpr UINT kHotkeyId = 1;
+guint g_poll_source = 0;     // GetAsyncKeyState timer
+bool g_poll_was_down = false;
+std::chrono::steady_clock::time_point g_last_fire;
+
+// Both delivery paths converge here. When the message path is alive
+// one physical press can arrive twice (WM_HOTKEY + poll edge), and a
+// double toggle cancels itself — the cooldown collapses duplicates.
+void fire() {
+    const auto now = std::chrono::steady_clock::now();
+    if (now - g_last_fire < std::chrono::milliseconds(400)) return;
+    g_last_fire = now;
+    if (g_on_trigger) g_on_trigger();
+}
+
+// Polls the driver-level key state: GetAsyncKeyState reflects the
+// physical key even while a fullscreen game eats the message path
+// (DirectInput exclusive grabs cannot suppress the state table).
+// Fires on the press edge only; the key must fully release before
+// the combo can trigger again.
+gboolean on_poll(gpointer) {
+    const bool key_down =
+        (GetAsyncKeyState(g_combo.virtual_key) & 0x8000) != 0;
+    const bool shift_ok =
+        (g_combo.modifiers & MOD_SHIFT) == 0 ||
+        (GetAsyncKeyState(VK_SHIFT) & 0x8000) != 0;
+    const bool ctrl_ok =
+        (g_combo.modifiers & MOD_CONTROL) == 0 ||
+        (GetAsyncKeyState(VK_CONTROL) & 0x8000) != 0;
+    const bool alt_ok =
+        (g_combo.modifiers & MOD_ALT) == 0 ||
+        (GetAsyncKeyState(VK_MENU) & 0x8000) != 0; // VK_MENU = Alt
+    const bool down = key_down && shift_ok && ctrl_ok && alt_ok;
+    if (down && !g_poll_was_down) fire();
+    g_poll_was_down = down;
+    return G_SOURCE_CONTINUE;
+}
 
 std::string lower(std::string text) {
     for (char& c : text)
@@ -118,8 +172,7 @@ Combo parse_combo(const std::string& text) {
 
 LRESULT CALLBACK sink_wnd_proc(HWND window, UINT message,
                                WPARAM wparam, LPARAM lparam) {
-    if (message == WM_HOTKEY && wparam == kHotkeyId && g_on_trigger)
-        g_on_trigger();
+    if (message == WM_HOTKEY && wparam == kHotkeyId) fire();
     return DefWindowProcW(window, message, wparam, lparam);
 }
 
@@ -154,30 +207,40 @@ bool hotkey_start(const std::string& combo_text,
     }
     g_on_trigger = std::move(on_trigger);
 
+    // Path 1: RegisterHotKey (message path — fast when it works).
+    bool registered = false;
     g_sink = create_sink_window();
     if (g_sink == nullptr) {
         g_warning("hotkey: could not create the message sink window "
                   "(error %lu)", GetLastError());
-        return false;
-    }
-    if (RegisterHotKey(g_sink, kHotkeyId, g_combo.modifiers,
-                       g_combo.virtual_key) == 0) {
+    } else if (RegisterHotKey(g_sink, kHotkeyId, g_combo.modifiers,
+                              g_combo.virtual_key) == 0) {
         g_warning("hotkey: RegisterHotKey failed for '%s' (error %lu) — "
                   "the combo is probably taken by another app",
                   combo_text.c_str(), GetLastError());
-        DestroyWindow(g_sink);
-        g_sink = nullptr;
-        return false;
+    } else {
+        registered = true;
     }
-    g_message("hotkey: registered '%s' system-wide", combo_text.c_str());
+
+    // Path 2: async poll (driver state — survives fullscreen grabs).
+    // Started even when path 1 failed: it is a complete fallback.
+    g_poll_source = g_timeout_add(50, on_poll, nullptr);
+
+    g_message("hotkey: '%s' active (register: %s, poll: yes)",
+              combo_text.c_str(), registered ? "yes" : "no");
     return true;
 }
 
 void hotkey_stop() {
-    if (g_sink == nullptr) return;
-    UnregisterHotKey(g_sink, kHotkeyId);
-    DestroyWindow(g_sink);
-    g_sink = nullptr;
+    if (g_poll_source != 0) {
+        g_source_remove(g_poll_source);
+        g_poll_source = 0;
+    }
+    if (g_sink != nullptr) {
+        UnregisterHotKey(g_sink, kHotkeyId);
+        DestroyWindow(g_sink);
+        g_sink = nullptr;
+    }
     g_on_trigger = nullptr;
 }
 
