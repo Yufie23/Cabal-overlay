@@ -30,6 +30,12 @@ not do.
 - **Panel display toggles**: quick header buttons flip rows between
   short codes and full names, and between the full list and a
   collapsed "first 3 + … N more" view for long lists.
+- **First-run quick tour**: a paged wizard explains everything once
+  (reopenable anytime from the "?" button in the panel).
+- **Update check**: one async GitHub API call at startup; if a newer
+  release exists you get a notification with a Download button.
+  Downloading and installing stays manual (disable with
+  `[updates] check = false`).
 - **Alarms**: a warning chime N minutes before scheduled events
   (configurable per event, volume supported on Linux).
 - **DG Check**: auto-increments a dungeon counter when you Ctrl+click the

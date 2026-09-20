@@ -50,6 +50,7 @@ set(APP_SOURCES
     src/main.cpp
     src/app/alarms.cpp
     src/app/dgcheck.cpp
+    src/app/update_check.cpp
     src/time/clock.cpp
     src/app/config.cpp
     src/model/dungeons.cpp
@@ -59,6 +60,7 @@ set(APP_SOURCES
     src/model/tasks.cpp
     src/ui/goals_panel.cpp
     src/ui/settings_window.cpp
+    src/ui/tutorial.cpp
 )
 
 # The platform backend is chosen here and NOTHING else in the
@@ -110,6 +112,11 @@ endif()
 
 # Lets sources write #include "platform/overlay.h" from anywhere.
 target_include_directories(cabal-overlay PRIVATE src)
+
+# The project version as a compiled-in string literal: the update
+# check compares it against the newest GitHub release tag.
+target_compile_definitions(cabal-overlay PRIVATE
+    CABAL_OVERLAY_VERSION="${PROJECT_VERSION}")
 
 target_link_libraries(cabal-overlay PRIVATE
     PkgConfig::GTK4

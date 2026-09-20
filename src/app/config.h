@@ -128,6 +128,11 @@ struct DgcheckConfig {
     bool require_ctrl = true; // only count clicks while CTRL is held
 };
 
+// [updates] section — the notify-only update check (app/update_check.h).
+struct UpdatesConfig {
+    bool check = true; // one async GitHub API call at startup
+};
+
 struct AppConfig {
     std::vector<ScheduleEvent> schedules;
     OverlayConfig overlay;
@@ -135,6 +140,7 @@ struct AppConfig {
     PanelConfig panel;
     HotkeyConfig hotkey;
     DgcheckConfig dgcheck;
+    UpdatesConfig updates;
 };
 
 // Parses the TOML file into an AppConfig.

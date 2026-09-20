@@ -88,6 +88,10 @@ AppConfig load_config(const std::string& path) {
         config.panel.collapsed  = (*panel)["collapsed"].value_or(config.panel.collapsed);
     }
 
+    if (const auto* updates = root["updates"].as_table()) {
+        config.updates.check = (*updates)["check"].value_or(config.updates.check);
+    }
+
     if (const auto* hotkey = root["hotkey"].as_table()) {
         // Enum modes parse explicitly: an unknown mode string is a
         // config typo and must fail loudly, not silently disable the

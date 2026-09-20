@@ -29,6 +29,7 @@
 #include <chrono>
 #include <cmath>
 #include <exception>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -41,6 +42,7 @@
 
 #include "app/alarms.h"
 #include "app/dgcheck.h"
+#include "app/update_check.h"
 #include "time/clock.h"
 #include "app/config.h"
 #include "model/dungeons.h"
@@ -56,6 +58,7 @@
 #include "model/tasks.h"
 #include "ui/goals_panel.h"
 #include "ui/settings_window.h"
+#include "ui/tutorial.h"
 
 namespace {
 
@@ -183,6 +186,30 @@ void persist_preset_state() {
     } catch (const std::exception& error) {
         g_warning("could not save presets: %s", error.what());
     }
+}
+
+// ── Tutorial flag ─────────────────────────────────────────────
+// A tiny versioned marker next to the state files: the wizard
+// auto-shows until the file exists with this version. Bump
+// kTutorialVersion when the tour changes enough to re-show.
+constexpr int kTutorialVersion = 1;
+
+std::filesystem::path tutorial_flag_path() {
+    return g_state_path.parent_path() / "tutorial.txt";
+}
+
+bool tutorial_seen() {
+    std::ifstream file{tutorial_flag_path()};
+    int version = 0;
+    if (file) file >> version;
+    return version >= kTutorialVersion;
+}
+
+void mark_tutorial_seen() {
+    std::ofstream file{tutorial_flag_path(), std::ios::trunc};
+    if (!(file << kTutorialVersion << '\n'))
+        g_warning("could not write tutorial flag %s",
+                  tutorial_flag_path().string().c_str());
 }
 
 // ── Preset lists ───────────────────────────────────────────────
@@ -522,8 +549,18 @@ void build_goals_panel(GtkApplication* app) {
                                            g_config, kConfigPath);
                      }), nullptr);
 
+    auto* help_button = gtk_button_new_with_label("?");
+    gtk_widget_add_css_class(help_button, "goal-bump");
+    gtk_widget_set_tooltip_text(help_button, "Quick tour (tutorial)");
+    g_signal_connect(help_button, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer) {
+                         tutorial::present(GTK_APPLICATION(g_app),
+                                           [] { mark_tutorial_seen(); });
+                     }), nullptr);
+
     gtk_box_append(GTK_BOX(footer), add_task_button);
     gtk_box_append(GTK_BOX(footer), settings_button);
+    gtk_box_append(GTK_BOX(footer), help_button);
     gtk_box_append(GTK_BOX(g_goals_panel), footer);
     gtk_box_append(GTK_BOX(g_goals_panel), g_goals_form);
 
@@ -671,6 +708,15 @@ void set_interactive(bool enabled) {
     // Leaving interactive mode re-exposes the focus rule: if the
     // game is not focused, the overlay hides now.
     apply_overlay_visibility();
+}
+
+// D-Bus action handler. Signature fixed by GAction: the action
+// itself, an optional parameter variant (unused here), user data.
+void on_open_release_page(GSimpleAction*, GVariant*, gpointer) {
+    // The Download button of the update notification lands here.
+    g_app_info_launch_default_for_uri(
+        "https://github.com/Yufie23/Cabal-overlay/releases/latest",
+        nullptr, nullptr);
 }
 
 // D-Bus action handler. Signature fixed by GAction: the action
@@ -869,6 +915,13 @@ void apply_css() {
             font-family: monospace;
             font-size: 11px;
             color: alpha(#ffd24d, 0.45);
+        }
+        .tutorial-title {
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .tutorial-body {
+            font-size: 13px;
         }
         .goal-name {
             font-family: monospace;
@@ -1076,6 +1129,31 @@ void on_activate(GtkApplication* app, gpointer) {
 
     // Tick once per second to refresh clocks and countdowns.
     g_timeout_add(1000, on_tick, bar);
+
+    // First run: the quick tour shows itself once (reopenable
+    // anytime from the "?" button in the panel footer).
+    if (!tutorial_seen())
+        tutorial::present(app, [] { mark_tutorial_seen(); });
+
+    // Update check (opt-out via [updates] check = false): one async
+    // GitHub API call; a notification only when a newer tag exists.
+    if (g_config.updates.check)
+        updates::check_latest(CABAL_OVERLAY_VERSION,
+                              [](const std::string& tag) {
+            auto* notification = g_notification_new("Update available");
+            const std::string body = std::format(
+                "{} is out on GitHub — you are on {}. "
+                "Download and install it like the first time.",
+                tag, CABAL_OVERLAY_VERSION);
+            g_notification_set_body(notification, body.c_str());
+            g_notification_add_button(notification, "Download",
+                                      "app.open-release-page");
+            g_application_send_notification(g_app, "cabal-update",
+                                            notification);
+            g_object_unref(notification);
+            g_message("update check: newer release %s available",
+                      tag.c_str());
+        });
 }
 
 } // namespace
@@ -1169,6 +1247,14 @@ int main(int argc, char* argv[]) {
         {
             .name           = "quit",
             .activate       = on_quit,
+            .parameter_type = nullptr,
+            .state          = nullptr,
+            .change_state   = nullptr,
+            .padding        = {0, 0, 0},
+        },
+        {
+            .name           = "open-release-page",
+            .activate       = on_open_release_page,
             .parameter_type = nullptr,
             .state          = nullptr,
             .change_state   = nullptr,

@@ -38,6 +38,14 @@ short_names = true
 # dgcheck counter still walks the full list.
 collapsed = false
 
+# ─────────────────────────────────────────────────────────────
+# Update check: one async call to the GitHub releases API at
+# startup. If a newer tag exists you get a notification with a
+# Download button — downloading and installing stays manual.
+# Set check = false to disable it entirely.
+[updates]
+check = true
+
 # How the global "make overlay clickable" combo reaches the app.
 #
 #   "external" → RECOMMENDED. A desktop shortcut calls the D-Bus

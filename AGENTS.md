@@ -166,6 +166,14 @@ registry warnings.
   visible rows at 3 with a "… N more" hint — display-only, dgcheck
   and signatures see the full list; the display modes live in
   goals_signature so a flip rebuilds the rows.
+- First-run tutorial (`ui/tutorial.*`): paged wizard, auto-shows
+  until tutorial.txt (next to state.json) carries kTutorialVersion;
+  bump that constant to re-show. Reopen via the "?" footer button.
+- Update check (`app/update_check.*`, `[updates] check`): async curl
+  subprocess against the GitHub releases API, notify-only with a
+  Download button (app.open-release-page). The compiled-in version
+  comes from CABAL_OVERLAY_VERSION (CMake PROJECT_VERSION) — bump
+  CMakeLists on every release or the check lies.
 
 ## Conventions
 - The vendored HTML tracker (`Prosperity_Task_Tracker.v6.1/`) is a read-only
