@@ -17,6 +17,7 @@
 #include "goals_panel.h"
 
 #include <algorithm>
+#include <array>
 #include <format>
 #include <limits>
 #include <map>
@@ -71,7 +72,7 @@ struct AddFormPayload {
     // The dungeon behind the dropdown's current selection. Positions
     // in the FILTERED model are not catalog positions, so selection is
     // resolved through the displayed label (unique — names are).
-    const Dungeon* selected_dungeon() const {
+    [[nodiscard]] const Dungeon* selected_dungeon() const {
         auto* item = gtk_drop_down_get_selected_item(
             GTK_DROP_DOWN(dungeon_dropdown)); // owned by the model
         if (item == nullptr) return nullptr;
@@ -157,9 +158,9 @@ gboolean on_box_drop(GtkDropTarget*, const GValue* value, double,
             g_object_get_data(G_OBJECT(child), "cabal-task-id"));
         if (child_id == nullptr) continue; // section header
         graphene_rect_t bounds;
-        if (!gtk_widget_compute_bounds(child, payload->box, &bounds))
+        if (gtk_widget_compute_bounds(child, payload->box, &bounds) == 0)
             continue;
-        if (y < bounds.origin.y + bounds.size.height / 2.0f) {
+        if (y < bounds.origin.y + (bounds.size.height / 2.0f)) {
             insert_at = index_of(tasks, child_id);
             break;
         }
@@ -281,15 +282,15 @@ gboolean on_animation_tick(gpointer data) {
     // `to`. Being an interpolation between the two endpoints it can
     // never overshoot the limit — unlike a spring/elastic curve.
     const double t = static_cast<double>(anim->step) / kAnimSteps;
-    double eased;
+    double eased = 0.0;
     if (t < 0.5) {
         eased = 4.0 * t * t * t;
     } else {
-        const double u = -2.0 * t + 2.0;
-        eased = 1.0 - (u * u * u) / 2.0;
+        const double u = (-2.0 * t) + 2.0;
+        eased = 1.0 - ((u * u * u) / 2.0);
     }
     gtk_progress_bar_set_fraction(
-        anim->bar, anim->from + (anim->to - anim->from) * eased);
+        anim->bar, anim->from + ((anim->to - anim->from) * eased));
     return G_SOURCE_CONTINUE;
 }
 
@@ -303,7 +304,8 @@ void on_animation_bar_destroyed(gpointer data, GObject*) {
 }
 
 void animate_progress(GtkProgressBar* bar, double from, double to) {
-    auto* anim = new ProgressAnimation{bar, from, to};
+    auto* anim = new ProgressAnimation{ .bar = bar, .from = from,
+                                        .to = to };
     anim->source_id = g_timeout_add(kAnimIntervalMs, on_animation_tick, anim);
     // A weak ref (not a strong one): we must NOT keep the bar alive,
     // only hear about its death to stop touching it.
@@ -334,7 +336,7 @@ guint g_fade_ticker = 0;
 
 double fade_fraction(const FadingRow& row) {
     const gint64 elapsed_us = g_get_monotonic_time() - row.started_us;
-    return std::clamp(1.0 - static_cast<double>(elapsed_us) / (kFadeMs * 1000),
+    return std::clamp(1.0 - (static_cast<double>(elapsed_us) / (kFadeMs * 1000)),
                       0.0, 1.0);
 }
 
@@ -394,7 +396,9 @@ GtkWidget* make_bump_button(const GoalsActions& actions, const Task& task,
                             int delta, const char* label) {
     auto* button = gtk_button_new_with_label(label);
     gtk_widget_add_css_class(button, "goal-bump");
-    auto* payload = new BumpPayload{actions, task.id, delta};
+    auto* payload = new BumpPayload{ .actions = actions,
+                                     .task_id = task.id,
+                                     .delta = delta };
     g_object_set_data_full(G_OBJECT(button), "cabal-payload", payload,
                            delete_payload<BumpPayload>);
     g_signal_connect(button, "clicked", G_CALLBACK(on_bump_clicked), nullptr);
@@ -404,8 +408,10 @@ GtkWidget* make_bump_button(const GoalsActions& actions, const Task& task,
 GtkWidget* make_toggle_button(const GoalsActions& actions, const Task& task) {
     auto* toggle = gtk_toggle_button_new_with_label("✓");
     gtk_widget_add_css_class(toggle, "goal-bump");
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(toggle), task.completed);
-    auto* payload = new TogglePayload{actions, task.id};
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(toggle),
+                                 task.completed ? TRUE : FALSE);
+    auto* payload = new TogglePayload{ .actions = actions,
+                                       .task_id = task.id };
     g_object_set_data_full(G_OBJECT(toggle), "cabal-payload", payload,
                            delete_payload<TogglePayload>);
     // Connected AFTER set_active so building the row never fires the
@@ -418,7 +424,8 @@ GtkWidget* make_remove_button(const GoalsActions& actions, const Task& task) {
     auto* button = gtk_button_new_with_label("✕");
     gtk_widget_add_css_class(button, "goal-bump");
     gtk_widget_set_tooltip_text(button, "Remove task");
-    auto* payload = new RemovePayload{actions, task.id};
+    auto* payload = new RemovePayload{ .actions = actions,
+                                       .task_id = task.id };
     g_object_set_data_full(G_OBJECT(button), "cabal-payload", payload,
                            delete_payload<RemovePayload>);
     g_signal_connect(button, "clicked", G_CALLBACK(on_remove_clicked), nullptr);
@@ -464,9 +471,11 @@ GtkWidget* make_row(const Task& task, const GoalsActions& actions,
     // dot. Reaching the goal counts as done even if the flag was
     // never set — row_is_done, same as TaskList::progress.
     const bool done = row_is_done(task);
-    const std::string counter = task.goal > 0
-        ? std::format("{}/{}", task.count, task.goal)
-        : (done ? "✓" : "·");
+    std::string counter;
+    if (task.goal > 0)
+        counter = std::format("{}/{}", task.count, task.goal);
+    else
+        counter = done ? "✓" : "·";
 
     auto* count = gtk_label_new(counter.c_str());
     gtk_widget_add_css_class(count, "goal-count");
@@ -538,20 +547,28 @@ void collect_bar_targets(GtkWidget* widget,
         collect_bar_targets(child, rendered);
 }
 
+// Shared state for one panel rebuild: the display mode plus the
+// collapsed-view budget bookkeeping, bundled so append_section does
+// not grow a parameter tail.
+struct RenderPass {
+    bool short_names;
+    int budget;
+    int hidden = 0;
+};
+
 // Emits the section header on the first VISIBLE (not done) task of
 // this type, so a type whose tasks are all done contributes nothing.
-// `budget` caps how many rows may still be emitted (collapsed view);
-// rows past the budget count into `hidden` instead, and a section
-// whose rows all overflow prints no header at all.
+// `pass.budget` caps how many rows may still be emitted (collapsed
+// view); rows past the budget count into `pass.hidden` instead, and
+// a section whose rows all overflow prints no header at all.
 void append_section(GtkWidget* panel, const char* title, TaskType type,
                     const TaskList& tasks, const GoalsActions& actions,
-                    const std::vector<Dungeon>& dungeons, bool short_names,
-                    int* budget, int* hidden) {
+                    const std::vector<Dungeon>& dungeons, RenderPass& pass) {
     bool first = true;
     for (const Task& task : tasks.all()) {
         if (task.type != type || row_is_done(task)) continue;
-        if (*budget <= 0) {
-            ++(*hidden);
+        if (pass.budget <= 0) {
+            ++pass.hidden;
             continue;
         }
         if (first) {
@@ -561,9 +578,9 @@ void append_section(GtkWidget* panel, const char* title, TaskType type,
             gtk_box_append(GTK_BOX(panel), header);
             first = false;
         }
-        --(*budget);
+        --pass.budget;
         gtk_box_append(GTK_BOX(panel),
-                       make_row(task, actions, dungeons, short_names));
+                       make_row(task, actions, dungeons, pass.short_names));
     }
 }
 
@@ -615,7 +632,9 @@ void goals_panel_refresh(GtkWidget* goals_box, const TaskList& tasks,
     // slot). Rows are drag SOURCES and get rebuilt every refresh, so
     // those are attached per-row in make_row instead.
     if (g_object_get_data(G_OBJECT(goals_box), "cabal-drop") == nullptr) {
-        auto* payload = new DropPayload{actions, &tasks, goals_box};
+        auto* payload = new DropPayload{ .actions = actions,
+                                         .tasks = &tasks,
+                                         .box = goals_box };
         g_object_set_data_full(G_OBJECT(goals_box), "cabal-drop", payload,
                                delete_payload<DropPayload>);
         auto* drop = gtk_drop_target_new(G_TYPE_STRING, GDK_ACTION_COPY);
@@ -631,8 +650,8 @@ void goals_panel_refresh(GtkWidget* goals_box, const TaskList& tasks,
     // of vanishing (they were visible, they are done now).
     for (const Task& task : tasks.all()) {
         if (!row_is_done(task)) continue;
-        if (g_visible_last.count(task.id) == 0) continue;
-        if (g_fading.count(task.id) != 0) continue;
+        if (!g_visible_last.contains(task.id)) continue;
+        if (g_fading.contains(task.id)) continue;
         g_fading[task.id] = FadingRow{ .snapshot = task,
                                        .started_us = g_get_monotonic_time(),
                                        .widget = nullptr,
@@ -656,19 +675,21 @@ void goals_panel_refresh(GtkWidget* goals_box, const TaskList& tasks,
     while (GtkWidget* child = gtk_widget_get_first_child(goals_box))
         gtk_box_remove(GTK_BOX(goals_box), child);
 
-    // Collapsed view: at most kCollapsedRowLimit visible rows, the
+    // Collapsed view: at most collapsed_row_limit visible rows, the
     // rest collapse into a "… N more" hint. Display-only — every
     // other consumer (dgcheck, signatures) sees the full list.
-    constexpr int kCollapsedRowLimit = 3;
-    int budget = collapsed ? kCollapsedRowLimit
-                           : std::numeric_limits<int>::max();
-    int hidden = 0;
+    constexpr int collapsed_row_limit = 3;
+    RenderPass pass {
+        .short_names = short_names,
+        .budget = collapsed ? collapsed_row_limit
+                            : std::numeric_limits<int>::max(),
+    };
     append_section(goals_box, "DAILY", TaskType::Daily, tasks, actions,
-                   dungeons, short_names, &budget, &hidden);
+                   dungeons, pass);
     append_section(goals_box, "WEEKLY", TaskType::Weekly, tasks, actions,
-                   dungeons, short_names, &budget, &hidden);
-    if (hidden > 0) {
-        const std::string more = std::format("… {} more", hidden);
+                   dungeons, pass);
+    if (pass.hidden > 0) {
+        const std::string more = std::format("… {} more", pass.hidden);
         auto* hint = gtk_label_new(more.c_str());
         gtk_widget_add_css_class(hint, "goal-more-hint");
         gtk_label_set_xalign(GTK_LABEL(hint), 0.0);
@@ -734,9 +755,10 @@ GtkWidget* goals_add_form_new(const GoalsActions& actions,
 
     auto* options = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
 
-    const char* type_names[] = {"Daily", "Weekly", nullptr};
+    static constexpr std::array<const char*, 3> type_names {
+        "Daily", "Weekly", nullptr };
     auto* type_dropdown = gtk_drop_down_new(
-        G_LIST_MODEL(gtk_string_list_new(type_names)), nullptr);
+        G_LIST_MODEL(gtk_string_list_new(type_names.data())), nullptr);
     gtk_widget_set_hexpand(type_dropdown, TRUE);
     gtk_box_append(GTK_BOX(options), type_dropdown);
 

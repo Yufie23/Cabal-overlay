@@ -9,6 +9,7 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint> // std::uint8_t (enum base types)
 #include <optional>
 #include <string>
 #include <variant>
@@ -102,7 +103,7 @@ struct PanelConfig {
 //              RegisterHotKey instead, with no such trade-off.)
 //   Disabled → no global combo at all; the D-Bus action still works
 //              when called manually.
-enum class HotkeyMode {
+enum class HotkeyMode : std::uint8_t {
     External,
     Evdev,
     Disabled,

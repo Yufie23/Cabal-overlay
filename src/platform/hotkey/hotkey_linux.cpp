@@ -24,6 +24,7 @@
 
 #include <cerrno>
 #include <cctype>
+#include <array>
 #include <cstring>
 #include <fcntl.h>
 #include <stdexcept>
@@ -64,17 +65,17 @@ std::string lower(std::string text) {
 // anything we do not map — callers fail loudly on unknown names
 // instead of silently listening for a key that can never fire.
 int lookup_key(const std::string& name) {
-    static const std::pair<const char*, int> kNamedKeys[] = {
-        {"space", KEY_SPACE},
-        {"tab",   KEY_TAB},
-        {"esc",   KEY_ESC},
-        {"enter", KEY_ENTER},
-        {"up",    KEY_UP},
-        {"down",  KEY_DOWN},
-        {"left",  KEY_LEFT},
-        {"right", KEY_RIGHT},
+    static const std::array named_keys {
+        std::pair{"space", KEY_SPACE},
+        std::pair{"tab",   KEY_TAB},
+        std::pair{"esc",   KEY_ESC},
+        std::pair{"enter", KEY_ENTER},
+        std::pair{"up",    KEY_UP},
+        std::pair{"down",  KEY_DOWN},
+        std::pair{"left",  KEY_LEFT},
+        std::pair{"right", KEY_RIGHT},
     };
-    for (const auto& [text, code] : kNamedKeys)
+    for (const auto& [text, code] : named_keys)
         if (name == text) return code;
 
     if (name.size() == 1) {
@@ -126,21 +127,24 @@ Combo parse_combo(const std::string& text) {
 }
 
 bool test_bit(const unsigned char* bitfield, int bit) {
-    return (bitfield[bit / 8] >> (bit % 8)) & 1;
+    return ((bitfield[bit / 8] >> (bit % 8)) & 1) != 0;
 }
 
 // Keyboard heuristic: has EV_KEY, lacks EV_REL/EV_ABS (mice and
 // touchpads carry those). Also requires the target key to exist on
 // the device, so a keypad or foot pedal never becomes the hotkey.
 bool is_usable_keyboard(int fd, int key_code) {
-    unsigned char evbits[(EV_MAX + 8) / 8] = {};
-    if (ioctl(fd, EVIOCGBIT(0, sizeof evbits), evbits) < 0) return false;
-    if (!test_bit(evbits, EV_KEY)) return false;
-    if (test_bit(evbits, EV_REL) || test_bit(evbits, EV_ABS)) return false;
+    std::array<unsigned char, (EV_MAX + 8) / 8> evbits {};
+    if (ioctl(fd, EVIOCGBIT(0, evbits.size()), evbits.data()) < 0)
+        return false;
+    if (!test_bit(evbits.data(), EV_KEY)) return false;
+    if (test_bit(evbits.data(), EV_REL) || test_bit(evbits.data(), EV_ABS))
+        return false;
 
-    unsigned char keybits[(KEY_MAX + 8) / 8] = {};
-    if (ioctl(fd, EVIOCGBIT(EV_KEY, sizeof keybits), keybits) < 0) return false;
-    return test_bit(keybits, key_code);
+    std::array<unsigned char, (KEY_MAX + 8) / 8> keybits {};
+    if (ioctl(fd, EVIOCGBIT(EV_KEY, keybits.size()), keybits.data()) < 0)
+        return false;
+    return test_bit(keybits.data(), key_code);
 }
 
 // One opened keyboard device. Freed (and closed) by GLib when its
@@ -150,10 +154,11 @@ struct DeviceSource {
 };
 
 gboolean on_device_ready(gint fd, GIOCondition, gpointer) {
-    input_event events[16];
+    std::array<input_event, 16> events;
     while (true) {
         const ssize_t count =
-            read(fd, events, sizeof events); // O_NONBLOCK: never blocks
+            read(fd, events.data(),
+                 events.size() * sizeof(input_event)); // O_NONBLOCK
         if (count < 0) {
             if (errno == EAGAIN) break;      // drained for now
             if (errno == EINTR) continue;
@@ -161,8 +166,10 @@ gboolean on_device_ready(gint fd, GIOCondition, gpointer) {
                       std::strerror(errno));
             break;
         }
-        const auto* first = events;
-        const auto* last = events + count / static_cast<ssize_t>(sizeof(input_event));
+        const auto* first = events.data();
+        const auto* last =
+            events.data() +
+            (count / static_cast<ssize_t>(sizeof(input_event)));
         for (const auto* event = first; event != last; ++event) {
             if (event->type != EV_KEY) continue;
             const bool down = event->value != 0; // 1 = press, 2 = autorepeat
@@ -174,11 +181,13 @@ gboolean on_device_ready(gint fd, GIOCondition, gpointer) {
             }
             // Fire only on a fresh press (not autorepeat) of the
             // target key with every required modifier held.
-            if (event->code != g_combo.key_code || event->value != 1) continue;
+            if (event->code != static_cast<__u16>(g_combo.key_code) ||
+                event->value != 1)
+                continue;
             const bool mods_ok =
-                (!(g_combo.modifiers & kModShift) || g_shift_down) &&
-                (!(g_combo.modifiers & kModCtrl)  || g_ctrl_down) &&
-                (!(g_combo.modifiers & kModAlt)   || g_alt_down);
+                ((g_combo.modifiers & kModShift) == 0 || g_shift_down) &&
+                ((g_combo.modifiers & kModCtrl)  == 0 || g_ctrl_down) &&
+                ((g_combo.modifiers & kModAlt)   == 0 || g_alt_down);
             if (mods_ok) g_on_trigger();
         }
     }

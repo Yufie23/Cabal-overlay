@@ -14,6 +14,7 @@
 
 #include "settings_window.h"
 
+#include <array>
 #include <exception>
 #include <format>
 #include <string>
@@ -42,8 +43,9 @@ void delete_setting_payload(gpointer data) {
 void attach_setting(GtkWidget* widget, std::string config_path,
                     std::string key) {
     g_object_set_data_full(G_OBJECT(widget), "cabal-setting",
-                           new SettingPayload{std::move(config_path),
-                                              std::move(key)},
+                           new SettingPayload{
+                               .config_path = std::move(config_path),
+                               .key = std::move(key) },
                            delete_setting_payload);
 }
 
@@ -101,7 +103,7 @@ void on_entry_applied(GtkEditable* entry, gpointer) {
 
 GtkWidget* make_switch(const std::string& path, const char* key, bool initial) {
     auto* widget = gtk_switch_new();
-    gtk_switch_set_active(GTK_SWITCH(widget), initial);
+    gtk_switch_set_active(GTK_SWITCH(widget), initial ? TRUE : FALSE);
     attach_setting(widget, path, key);
     g_signal_connect(widget, "notify::active",
                      G_CALLBACK(on_switch_applied), nullptr);
@@ -134,7 +136,7 @@ GtkWidget* make_scale(const std::string& path, const char* key, double initial,
 // strings never change, and the non-const pointer level lets the
 // array decay to gpointer for g_signal_connect without a cast.
 GtkWidget* make_dropdown(const std::string& path, const char* key,
-                         const char** options, int n_options,
+                         const char* const* options, int n_options,
                          int initial_index) {
     std::vector<const char*> names(options, options + n_options);
     names.push_back(nullptr);
@@ -144,7 +146,12 @@ GtkWidget* make_dropdown(const std::string& path, const char* key,
     gtk_drop_down_set_selected(GTK_DROP_DOWN(widget), initial_index);
     attach_setting(widget, path, key);
     g_signal_connect(widget, "notify::selected",
-                     G_CALLBACK(on_dropdown_applied), options);
+                     G_CALLBACK(on_dropdown_applied),
+                     // Feeding const data to a C callback: static_cast
+                     // to const void* first, then drop the const — the
+                     // callback reads the option strings, never writes.
+                     const_cast<gpointer>(
+                         static_cast<const void*>(options)));
     return widget;
 }
 
@@ -192,13 +199,16 @@ GtkWidget* build_bar_page(const AppConfig& config,
     // "custom" = free position (drag the window, or set margins as
     // absolute x/y from the top-left corner — margins go up to 4000
     // so 4K screens are reachable, not just this 1080p one).
-    static const char* kAnchors[] = {
+    static const std::array anchors {
         "top-left", "top-right", "bottom-left", "bottom-right", "custom",
     };
     int row = 0;
     add_row(grid, row++, "Position",
-            make_dropdown(path, "overlay.anchor", kAnchors, 5,
-                          index_of(kAnchors, 5, config.overlay.anchor)));
+            make_dropdown(path, "overlay.anchor", anchors.data(),
+                          static_cast<int>(anchors.size()),
+                          index_of(anchors.data(),
+                                   static_cast<int>(anchors.size()),
+                                   config.overlay.anchor)));
     add_row(grid, row++, "Horizontal margin",
             make_spin(path, "overlay.margin_x", config.overlay.margin_x,
                       0, 4000));
@@ -220,7 +230,7 @@ GtkWidget* build_bar_page(const AppConfig& config,
 GtkWidget* build_panel_page(const AppConfig& config,
                             const std::string& path) {
     auto* grid = GTK_GRID(make_page_grid());
-    static const char* kAnchors[] = {
+    static const std::array anchors {
         "left", "right", "top-left", "top-right", "bottom-left",
         "bottom-right", "custom",
     };
@@ -228,8 +238,11 @@ GtkWidget* build_panel_page(const AppConfig& config,
     add_row(grid, row++, "Show goals panel",
             make_switch(path, "panel.visible", config.panel.visible));
     add_row(grid, row++, "Position",
-            make_dropdown(path, "panel.anchor", kAnchors, 7,
-                          index_of(kAnchors, 7, config.panel.anchor)));
+            make_dropdown(path, "panel.anchor", anchors.data(),
+                          static_cast<int>(anchors.size()),
+                          index_of(anchors.data(),
+                                   static_cast<int>(anchors.size()),
+                                   config.panel.anchor)));
     add_row(grid, row++, "Horizontal margin",
             make_spin(path, "panel.margin_x", config.panel.margin_x,
                       0, 4000));
@@ -305,16 +318,17 @@ GtkWidget* build_dgcheck_page(const AppConfig& config,
 GtkWidget* build_hotkey_page(const AppConfig& config,
                              const std::string& path) {
     auto* grid = GTK_GRID(make_page_grid());
-    static const char* kModes[] = {"external", "evdev", "disabled"};
+    static const std::array modes {"external", "evdev", "disabled"};
     int row = 0;
+    const char* current_mode = "disabled";
+    if (config.hotkey.mode == HotkeyMode::External) current_mode = "external";
+    else if (config.hotkey.mode == HotkeyMode::Evdev) current_mode = "evdev";
     add_row(grid, row++, "Mode",
-            make_dropdown(path, "hotkey.mode", kModes, 3,
-                          index_of(kModes, 3,
-                                   config.hotkey.mode == HotkeyMode::External
-                                       ? "external"
-                                       : config.hotkey.mode == HotkeyMode::Evdev
-                                             ? "evdev"
-                                             : "disabled")));
+            make_dropdown(path, "hotkey.mode", modes.data(),
+                          static_cast<int>(modes.size()),
+                          index_of(modes.data(),
+                                   static_cast<int>(modes.size()),
+                                   current_mode)));
     add_row(grid, row++, "Combo (evdev mode)",
             make_entry(path, "hotkey.combo", config.hotkey.combo));
     return GTK_WIDGET(grid);

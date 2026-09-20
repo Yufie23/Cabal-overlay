@@ -6,6 +6,7 @@
 
 #include "tutorial.h"
 
+#include <array>
 #include <string>
 #include <vector>
 
@@ -18,9 +19,10 @@ struct Page {
     const char* body;
 };
 
-const Page kPages[] = {
+const std::array<Page, 5> kPages {{
     {
-        "Welcome to Cabal Overlay",
+        .title = "Welcome to Cabal Overlay",
+        .body =
         "Two floating surfaces sit on top of your game:\n\n"
         "  •  The BAR — clock and countdowns to game events.\n"
         "  •  The GOALS PANEL — your dungeon task list.\n\n"
@@ -29,7 +31,8 @@ const Page kPages[] = {
         "which window has focus.",
     },
     {
-        "Click-through vs Interactive",
+        .title = "Click-through vs Interactive",
+        .body =
         "By default your clicks pass THROUGH to the game — the "
         "overlay is invisible to the mouse.\n\n"
         "Press the hotkey (Shift+Space on Windows, or your desktop "
@@ -39,7 +42,8 @@ const Page kPages[] = {
         "mouse back to the game.",
     },
     {
-        "The goals panel",
+        .title = "The goals panel",
+        .body =
         "Each row is a task:\n\n"
         "  •  − / + buttons count runs; the bar fills to the goal.\n"
         "  •  Done tasks fade out and come back on the daily reset.\n"
@@ -49,7 +53,8 @@ const Page kPages[] = {
         "DG Check.",
     },
     {
-        "Lists and display",
+        .title = "Lists and display",
+        .body =
         "The dropdown at the top switches between your CUSTOM list "
         "(yours to edit freely) and PRESET templates — fixed lists "
         "your clan can ship in data/task_lists.json.\n\n"
@@ -57,7 +62,8 @@ const Page kPages[] = {
         "  •  \"▾\" collapses a long list to its first 3 tasks.",
     },
     {
-        "Settings, alarms and quitting",
+        .title = "Settings, alarms and quitting",
+        .body =
         "The ⚙ button opens the settings: alarms, positions, hotkey, "
         "DG Check zone. Everything applies live.\n\n"
         "On Windows the overlay lives in the SYSTEM TRAY — "
@@ -68,7 +74,7 @@ const Page kPages[] = {
         "This tutorial is always available from the \"?\" button in "
         "the panel.",
     },
-};
+}}; // double braces: std::array is an aggregate wrapping a C array
 
 struct Wizard {
     std::function<void()> on_done;
@@ -80,8 +86,7 @@ struct Wizard {
     bool finished = false; // on_done fires once, from exactly one path
 };
 
-constexpr guint kPageCount =
-    sizeof(kPages) / sizeof(kPages[0]);
+constexpr guint kPageCount = kPages.size();
 
 void delete_wizard(gpointer data) {
     delete static_cast<Wizard*>(data);
@@ -95,7 +100,10 @@ void finish(Wizard* wizard) {
 }
 
 void sync_navigation(Wizard* wizard) {
-    gtk_widget_set_sensitive(wizard->back_button, wizard->page > 0);
+    // gboolean is an int; pass the GLib idiom explicitly instead of
+    // relying on the bool→int conversion.
+    gtk_widget_set_sensitive(wizard->back_button,
+                             wizard->page > 0 ? TRUE : FALSE);
     gtk_button_set_label(GTK_BUTTON(wizard->next_button),
                          wizard->page + 1 == kPageCount ? "Done" : "Next →");
 }
@@ -159,8 +167,13 @@ void on_close_request(GtkWindow*, gpointer wizard_ptr) {
 namespace tutorial {
 
 void present(GtkApplication* app, std::function<void()> on_done) {
-    auto* wizard = new Wizard{ std::move(on_done), nullptr, nullptr,
-                               nullptr, nullptr, 0, false };
+    auto* wizard = new Wizard{ .on_done = std::move(on_done),
+                               .window = nullptr,
+                               .stack = nullptr,
+                               .back_button = nullptr,
+                               .next_button = nullptr,
+                               .page = 0,
+                               .finished = false };
 
     wizard->window = gtk_application_window_new(app);
     gtk_window_set_title(GTK_WINDOW(wizard->window), "Cabal Overlay — Quick Tour");

@@ -24,6 +24,7 @@
 
 #include <X11/Xlib.h>
 
+#include <array>
 #include <utility>
 
 namespace {
@@ -41,17 +42,21 @@ bool ctrl_held() {
     // keycode n is down when byte n/8 has bit n%8 set. Keycodes are
     // server-wide constants under XWayland's evdev mapping: 37 is
     // Control_L and 109 is Control_R.
-    char keymap[32];
-    XQueryKeymap(g_display, keymap);
-    constexpr int kCtrlL = 37;
-    constexpr int kCtrlR = 109;
-    return (keymap[kCtrlL / 8] & (1 << (kCtrlL % 8))) != 0 ||
-           (keymap[kCtrlR / 8] & (1 << (kCtrlR % 8))) != 0;
+    std::array<char, 32> keymap {};
+    XQueryKeymap(g_display, keymap.data());
+    constexpr int ctrl_l = 37;
+    constexpr int ctrl_r = 109;
+    return (keymap[ctrl_l / 8] & (1 << (ctrl_l % 8))) != 0 ||
+           (keymap[ctrl_r / 8] & (1 << (ctrl_r % 8))) != 0;
 }
 
 gboolean on_poll(gpointer) {
-    Window root_return, child_return;
-    int root_x = 0, root_y = 0, win_x = 0, win_y = 0;
+    Window root_return = None;
+    Window child_return = None;
+    int root_x = 0;
+    int root_y = 0;
+    int win_x = 0;
+    int win_y = 0;
     unsigned int mask = 0;
     // Querying the root window yields ROOT coordinates: absolute
     // screen pixels, immune to any window moving under the pointer.

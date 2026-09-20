@@ -73,7 +73,7 @@ bool window_matches_game(Window window) {
     // Wine identifies its windows with the executable name in
     // WM_CLASS (instance and class); the window title is a fallback
     // for launchers that predate the main client window.
-    XClassHint hint { nullptr, nullptr };
+    XClassHint hint { .res_name = nullptr, .res_class = nullptr };
     if (XGetClassHint(g_display, window, &hint) != 0) {
         const bool hit = contains_nocase(hint.res_name != nullptr
                                              ? hint.res_name

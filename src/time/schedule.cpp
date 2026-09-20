@@ -64,7 +64,7 @@ std::vector<UpcomingEvent> upcoming_events(
     std::vector<UpcomingEvent> upcoming;
     for (const auto& event : events) {
         if (const auto at = next_occurrence(event, now))
-            upcoming.push_back({event.name, *at});
+            upcoming.push_back({ .name = event.name, .at = *at });
     }
 
     // Keep only the soonest `limit`, chronologically sorted.
@@ -75,18 +75,21 @@ std::vector<UpcomingEvent> upcoming_events(
         // partial_sort: only the first `limit` elements end up sorted;
         // sorting 5 events fully would cost the same, but this habit
         // scales when the list grows.
-        std::partial_sort(upcoming.begin(), upcoming.begin() + limit,
+        std::partial_sort(upcoming.begin(),
+                          upcoming.begin() +
+                              static_cast<std::ptrdiff_t>(limit),
                           upcoming.end(), by_soonest);
         upcoming.resize(limit);
     } else {
-        std::sort(upcoming.begin(), upcoming.end(), by_soonest);
+        std::ranges::sort(upcoming, by_soonest);
     }
     return upcoming;
 }
 
 std::string format_countdown(std::chrono::system_clock::duration remaining) {
-    auto total = std::chrono::duration_cast<std::chrono::seconds>(remaining).count();
-    if (total < 0) total = 0;
+    const auto total = std::max(
+        std::chrono::duration_cast<std::chrono::seconds>(remaining).count(),
+        int64_t{0});
 
     const long days    = total / 86400;
     const long hours   = (total % 86400) / 3600;

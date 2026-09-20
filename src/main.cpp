@@ -26,6 +26,7 @@
 // ─────────────────────────────────────────────────────────────
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <exception>
@@ -62,7 +63,7 @@
 
 namespace {
 
-constexpr char kApplicationId[] = "dev.cabal.Overlay";
+constexpr const char* kApplicationId = "dev.cabal.Overlay";
 
 // Where the config lives. On Linux it ships in the working
 // directory (the repo layout). On Windows a portable exe cannot
@@ -88,12 +89,12 @@ std::string app_data_file(const char* name) {
     return target.string();
 }
 const std::string kConfigPath = app_data_file("overlay.toml");
-constexpr char kDungeonsPath[] = "data\\dungeons.json";
-constexpr char kTaskListsPath[] = "data\\task_lists.json";
+constexpr const char* kDungeonsPath = "data\\dungeons.json";
+constexpr const char* kTaskListsPath = "data\\task_lists.json";
 #else
 const std::string kConfigPath = "config/overlay.toml";
-constexpr char kDungeonsPath[] = "data/dungeons.json";
-constexpr char kTaskListsPath[] = "data/task_lists.json";
+constexpr const char* kDungeonsPath = "data/dungeons.json";
+constexpr const char* kTaskListsPath = "data/task_lists.json";
 #endif
 
 // ── Module state ─────────────────────────────────────────────
@@ -218,8 +219,8 @@ void mark_tutorial_seen() {
 // data/task_lists.json. Actions route by the active source so the
 // view layer never learns the difference.
 
-TaskPreset* find_preset(const std::string& id) {
-    for (TaskPreset& preset : g_presets)
+const TaskPreset* find_preset(const std::string& id) {
+    for (const TaskPreset& preset : g_presets)
         if (preset.id == id) return &preset;
     return nullptr;
 }
@@ -243,7 +244,7 @@ std::string preset_task_name(const TaskPreset& preset,
 // override does not know are appended, names the template dropped
 // are skipped.
 void materialize_active_tasks() {
-    TaskPreset* preset = find_preset(g_preset_state.active_list);
+    const TaskPreset* preset = find_preset(g_preset_state.active_list);
     if (preset == nullptr) {
         g_active_tasks = g_state.tasks;
         return;
@@ -253,7 +254,7 @@ void materialize_active_tasks() {
     PresetListProgress& progress = g_preset_state.lists[preset->id];
     std::vector<std::string> order = progress.order;
     for (const PresetTask& task : preset->tasks)
-        if (std::find(order.begin(), order.end(), task.name) == order.end())
+        if (std::ranges::find(order, task.name) == order.end())
             order.push_back(task.name);
 
     for (const std::string& name : order) {
@@ -289,12 +290,13 @@ void refresh_goals_panel() {
     // Preset lists are fixed templates: adding is meaningless there.
     const bool preset = preset_active();
     if (g_add_task_button != nullptr)
-        gtk_widget_set_visible(g_add_task_button, !preset);
+        gtk_widget_set_visible(g_add_task_button, preset ? FALSE : TRUE);
     if (preset && g_goals_form != nullptr)
         gtk_widget_set_visible(g_goals_form, FALSE);
     const bool visible = !g_active_tasks.all().empty() ||
-                         gtk_widget_get_visible(g_goals_form);
-    gtk_widget_set_visible(GTK_WIDGET(g_panel_window), visible);
+                         gtk_widget_get_visible(g_goals_form) == TRUE;
+    gtk_widget_set_visible(GTK_WIDGET(g_panel_window),
+                           visible ? TRUE : FALSE);
     // A surface that comes back from hidden is clickable by
     // default — re-assert click-through on the panel.
     platform::overlay_set_interactive(g_panel_window, g_interactive);
@@ -306,7 +308,7 @@ void refresh_goals_panel() {
 GoalsActions make_goals_actions() {
     GoalsActions actions;
     actions.bump_count = [](const std::string& id, int delta) {
-        if (TaskPreset* preset = find_preset(g_preset_state.active_list)) {
+        if (const TaskPreset* preset = find_preset(g_preset_state.active_list)) {
             // Mirror of TaskList::bump_count on the preset's progress:
             // clamp to [0, goal], auto-complete when the goal is met.
             PresetListProgress& progress = g_preset_state.lists[preset->id];
@@ -315,8 +317,7 @@ GoalsActions make_goals_actions() {
             for (const PresetTask& task : preset->tasks)
                 if (task.name == name) goal = task.goal;
             int& count = progress.counts[name];
-            count += delta;
-            if (count < 0) count = 0;
+            count = std::max(count + delta, 0);
             if (goal > 0) {
                 count = std::min(count, goal);
                 progress.completed[name] = count >= goal;
@@ -334,7 +335,7 @@ GoalsActions make_goals_actions() {
         refresh_goals_panel();
     };
     actions.set_completed = [](const std::string& id, bool completed) {
-        if (TaskPreset* preset = find_preset(g_preset_state.active_list)) {
+        if (const TaskPreset* preset = find_preset(g_preset_state.active_list)) {
             g_preset_state.lists[preset->id]
                 .completed[preset_task_name(*preset, id)] = completed;
             persist_preset_state();
@@ -358,7 +359,7 @@ GoalsActions make_goals_actions() {
         refresh_goals_panel();
     };
     actions.move_task = [](const std::string& id, int delta) {
-        if (TaskPreset* preset = find_preset(g_preset_state.active_list)) {
+        if (const TaskPreset* preset = find_preset(g_preset_state.active_list)) {
             // Reorder the display-order override with the same slide
             // semantics as TaskList::move (neighbors keep their order).
             PresetListProgress& progress = g_preset_state.lists[preset->id];
@@ -366,7 +367,7 @@ GoalsActions make_goals_actions() {
             for (const Task& task : g_active_tasks.all())
                 order.push_back(task.name);
             const std::string name = preset_task_name(*preset, id);
-            const auto it = std::find(order.begin(), order.end(), name);
+            const auto it = std::ranges::find(order, name);
             if (it == order.end()) return;
             const std::ptrdiff_t index = std::distance(order.begin(), it);
             const std::ptrdiff_t last =
@@ -669,9 +670,10 @@ void on_config_file_changed(GFileMonitor*, GFile*, GFile*,
 void apply_overlay_visibility() {
     const bool visible =
         !g_game_watch_active || g_game_focused || g_interactive;
-    gtk_widget_set_visible(GTK_WIDGET(g_window), visible);
+    gtk_widget_set_visible(GTK_WIDGET(g_window), visible ? TRUE : FALSE);
     if (g_panel_window != nullptr)
-        gtk_widget_set_visible(GTK_WIDGET(g_panel_window), visible);
+        gtk_widget_set_visible(GTK_WIDGET(g_panel_window),
+                               visible ? TRUE : FALSE);
 }
 
 void on_game_focus_change(bool focused) {
@@ -1219,7 +1221,7 @@ int main(int argc, char* argv[]) {
     // over D-Bus (interface org.gtk.Actions). This is the public remote
     // control of the overlay; KDE custom shortcuts call it:
     //   gdbus call --session --dest dev.cabal.Overlay --object-path /dev/cabal/Overlay --method org.gtk.Actions.Activate toggle-interactive [] {}
-    const GActionEntry actions[] = {
+    const std::array<GActionEntry, 5> actions {{
         {
             .name           = "toggle-interactive",
             .activate       = on_toggle_interactive,
@@ -1260,8 +1262,9 @@ int main(int argc, char* argv[]) {
             .change_state   = nullptr,
             .padding        = {0, 0, 0},
         },
-    };
-    g_action_map_add_action_entries(G_ACTION_MAP(app), actions, G_N_ELEMENTS(actions), app);
+    }}; // double braces: std::array is an aggregate wrapping a C array
+    g_action_map_add_action_entries(G_ACTION_MAP(app), actions.data(),
+                                    static_cast<gint>(actions.size()), app);
 
     const int status = g_application_run(G_APPLICATION(app), argc, argv);
     g_object_unref(app);

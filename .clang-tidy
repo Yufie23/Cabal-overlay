@@ -1,0 +1,97 @@
+# clang-tidy — the C++ linter (the project's "ESLint").
+# clangd picks this file up automatically in the editor; CLI:
+#   clang-tidy -p build <file.cpp>
+#
+# Philosophy: a curated set, not the 300-check buffet. Rules that
+# fight our reality (GTK C interop, UI constants everywhere, plain
+# data structs as a deliberate style) are excluded with the reason
+# noted. The naming block does the opposite: it encodes the
+# conventions this codebase ALREADY follows, so the linter guards
+# them instead of us remembering.
+
+Checks: >
+  bugprone-*,
+  -bugprone-easily-swappable-parameters,
+  modernize-*,
+  -modernize-use-trailing-return-type,
+  performance-*,
+  misc-*,
+  readability-*,
+  -readability-magic-numbers,
+  -readability-identifier-length,
+  -readability-uppercase-literal-suffix,
+  -readability-include-cleaner,
+  -readability-duplicate-include,
+  -readability-braces-around-statements,
+  -readability-inconsistent-ifelse-braces,
+  -readability-named-parameter,
+  -misc-non-private-member-variables-in-classes,
+  -misc-no-recursion,
+  -bugprone-throwing-static-initialization,
+  -misc-include-cleaner
+
+# ── Exclusion rationale ────────────────────────────────────────
+# -bugprone-easily-swappable-parameters: fires on nearly every small
+#   two-int UI helper (move x/y, margin_x/margin_y are the domain).
+# -modernize-use-trailing-return-type: house style is classic
+#   return types; both are valid C++, consistency wins.
+# -readability-magic-numbers: UI code is full of pixel constants;
+#   naming each one would be noise, not clarity.
+# -readability-identifier-length: x/y/id are domain terms here.
+# -readability-include-cleaner / -duplicate-include /
+# -misc-include-cleaner: GTK umbrella headers (gtk/gtk.h) confuse
+#   them; not worth the upkeep.
+# -readability-braces-around-statements /
+# -readability-inconsistent-ifelse-braces: house style uses
+#   brace-less single-line statements everywhere, deliberately.
+# -bugprone-throwing-static-initialization: our globals are plain
+#   data structs; the only possible throw is std allocation failure,
+#   which is fatal either way.
+# -readability-named-parameter: GTK callbacks have fixed signatures
+#   full of unused params; omitting their names is the C++ idiom for
+#   exactly that.
+# -misc-non-private-member-variables-in-classes: plain aggregate
+#   structs ARE the house style for data and GTK payloads; turning
+#   them into classes would be ceremony, not safety.
+# -misc-no-recursion: the widget-tree walk is intentionally recursive
+#   and bounded by tree depth.
+
+CheckOptions:
+  # Function size: flags the worst offenders — the point is to make
+  # "main.cpp grew too much" a compiler-visible fact, not a feeling.
+  # Parsers/config-writers (load_config, set_config_value,
+  # make_goals_actions) are cohesive-but-branchy by nature and sit
+  # just under these bars.
+  readability-function-size.LineThreshold: 130
+  readability-function-size.StatementThreshold: 130
+  readability-function-size.ParameterThreshold: 8
+  readability-function-size.NestingThreshold: 4
+  readability-function-cognitive-complexity.Threshold: 40
+
+  # Naming conventions, as already practiced in this codebase:
+  #   functions/variables  lower_case
+  #   types (struct/class) CamelCase
+  #   globals              g_snake_case
+  #   constants            kCamelCase
+  #   macros               UPPER_CASE
+  #   private members      m_snake_case
+  readability-identifier-naming.FunctionCase: lower_case
+  readability-identifier-naming.StructCase: CamelCase
+  readability-identifier-naming.ClassCase: CamelCase
+  readability-identifier-naming.EnumCase: CamelCase
+  readability-identifier-naming.EnumConstantCase: CamelCase
+  readability-identifier-naming.VariableCase: lower_case
+  readability-identifier-naming.ParameterCase: lower_case
+  readability-identifier-naming.MemberCase: lower_case
+  readability-identifier-naming.GlobalVariableCase: lower_case
+  readability-identifier-naming.GlobalVariablePrefix: g_
+  # The k prefix belongs to NAMESPACE-scope constants only; plain
+  # 'const auto x' locals and function-scope statics are immutable
+  # variables, not named constants, and stay lower_case.
+  readability-identifier-naming.ConstantCase: lower_case
+  readability-identifier-naming.GlobalConstantCase: CamelCase
+  readability-identifier-naming.GlobalConstantPrefix: k
+  readability-identifier-naming.LocalConstantCase: lower_case
+  readability-identifier-naming.PrivateMemberCase: lower_case
+  readability-identifier-naming.PrivateMemberPrefix: m_
+  readability-identifier-naming.MacroDefinitionCase: UPPER_CASE

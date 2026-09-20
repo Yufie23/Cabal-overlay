@@ -12,9 +12,12 @@
 
 namespace platform {
 
+// NOLINTBEGIN(performance-unnecessary-value-param) — the contract
+// passes by value; this backend simply never uses the argument.
 bool tray_start(TrayActions /*actions*/) {
     return false; // no tray on this platform; D-Bus actions cover it
 }
+// NOLINTEND(performance-unnecessary-value-param)
 
 void tray_stop() {
     // Nothing was started.

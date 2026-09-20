@@ -5,6 +5,7 @@
 #include "tasks.h"
 
 #include <algorithm>
+#include <charconv> // std::from_chars (seed_id_counter)
 #include <stdexcept>
 
 namespace {
@@ -29,7 +30,7 @@ Task& TaskList::add(TaskType type, std::string name, int goal) {
 }
 
 bool TaskList::remove(const std::string& id) {
-    const auto it = std::find_if(m_tasks.begin(), m_tasks.end(),
+    const auto it = std::ranges::find_if(m_tasks,
                                  [&](const Task& t) { return t.id == id; });
     if (it == m_tasks.end()) return false;
     m_tasks.erase(it);
@@ -37,7 +38,7 @@ bool TaskList::remove(const std::string& id) {
 }
 
 bool TaskList::move(const std::string& id, int delta) {
-    const auto it = std::find_if(m_tasks.begin(), m_tasks.end(),
+    const auto it = std::ranges::find_if(m_tasks,
                                  [&](const Task& t) { return t.id == id; });
     if (it == m_tasks.end()) return false;
     // std::ptrdiff_t is what std::distance returns for a vector and
@@ -61,13 +62,13 @@ bool TaskList::move(const std::string& id, int delta) {
 }
 
 Task* TaskList::find(const std::string& id) {
-    const auto it = std::find_if(m_tasks.begin(), m_tasks.end(),
+    const auto it = std::ranges::find_if(m_tasks,
                                  [&](const Task& t) { return t.id == id; });
     return it != m_tasks.end() ? &*it : nullptr;
 }
 
 const Task* TaskList::find(const std::string& id) const {
-    const auto it = std::find_if(m_tasks.begin(), m_tasks.end(),
+    const auto it = std::ranges::find_if(m_tasks,
                                  [&](const Task& t) { return t.id == id; });
     return it != m_tasks.end() ? &*it : nullptr;
 }
@@ -76,8 +77,7 @@ void TaskList::bump_count(const std::string& id, int delta) {
     Task* task = find(id);
     if (task == nullptr) return; // routine "not found", not an error
 
-    task->count += delta;
-    if (task->count < 0) task->count = 0;
+    task->count = std::max(task->count + delta, 0);
     if (task->goal > 0) {
         task->count = std::min(task->count, task->goal); // capped at goal
         if (task->count >= task->goal) task->completed = true;
@@ -120,14 +120,12 @@ std::string TaskList::next_id() {
 
 void TaskList::seed_id_counter() {
     for (const Task& task : m_tasks) {
-        try {
-            // stoull returns unsigned long long, which is a distinct
-            // type from uint64_t on Linux: convert explicitly or
-            // std::max cannot pick an overload.
-            const auto id = static_cast<std::uint64_t>(std::stoull(task.id));
+        // from_chars instead of stoull: no exceptions, and a
+        // non-numeric id from a hand-edited file is a clean errc,
+        // not a catch block.
+        std::uint64_t id = 0;
+        const char* end = task.id.data() + task.id.size();
+        if (std::from_chars(task.id.data(), end, id).ec == std::errc())
             m_next_id = std::max(m_next_id, id + 1);
-        } catch (...) {
-            // non-numeric id from a hand-edited file: ignore it
-        }
     }
 }

@@ -5,6 +5,7 @@
 
 #include "config.h"
 
+#include <array>
 #include <cctype>
 #include <filesystem>
 #include <format>
@@ -33,16 +34,16 @@ std::chrono::minutes parse_hhmm(const std::string& text) {
 std::chrono::weekday parse_weekday(const std::string& name) {
     // Structured bindings (`auto& [text, day]`) unpack each pair
     // from the array, like destructuring in JS.
-    static const std::pair<const char*, std::chrono::weekday> kNames[] = {
-        {"monday",    std::chrono::Monday},
-        {"tuesday",   std::chrono::Tuesday},
-        {"wednesday", std::chrono::Wednesday},
-        {"thursday",  std::chrono::Thursday},
-        {"friday",    std::chrono::Friday},
-        {"saturday",  std::chrono::Saturday},
-        {"sunday",    std::chrono::Sunday},
+    static const std::array weekday_names {
+        std::pair{"monday",    std::chrono::Monday},
+        std::pair{"tuesday",   std::chrono::Tuesday},
+        std::pair{"wednesday", std::chrono::Wednesday},
+        std::pair{"thursday",  std::chrono::Thursday},
+        std::pair{"friday",    std::chrono::Friday},
+        std::pair{"saturday",  std::chrono::Saturday},
+        std::pair{"sunday",    std::chrono::Sunday},
     };
-    for (const auto& [text, day] : kNames)
+    for (const auto& [text, day] : weekday_names)
         if (name == text) return day;
     throw std::runtime_error("unknown weekday: '" + name + "'");
 }
@@ -65,7 +66,7 @@ AppConfig load_config(const std::string& path) {
     // Parse the whole [overlay] section so the struct always reflects
     // the file; value_or keeps the in-class default when a key is
     // absent.
-    if (overlay_nodes) {
+    if (overlay_nodes != nullptr) {
         const auto& overlay = *overlay_nodes;
         config.overlay.anchor         = overlay["anchor"].value_or(config.overlay.anchor);
         config.overlay.margin_x       = overlay["margin_x"].value_or(config.overlay.margin_x);
@@ -78,7 +79,7 @@ AppConfig load_config(const std::string& path) {
                 .value_or(config.overlay.show_only_when_game_focused);
     }
 
-    if (const auto* panel = root["panel"].as_table()) {
+    if (const auto* panel = root["panel"].as_table(); panel != nullptr) {
         config.panel.visible    = (*panel)["visible"].value_or(config.panel.visible);
         config.panel.anchor     = (*panel)["anchor"].value_or(config.panel.anchor);
         config.panel.margin_x   = (*panel)["margin_x"].value_or(config.panel.margin_x);
@@ -88,11 +89,11 @@ AppConfig load_config(const std::string& path) {
         config.panel.collapsed  = (*panel)["collapsed"].value_or(config.panel.collapsed);
     }
 
-    if (const auto* updates = root["updates"].as_table()) {
+    if (const auto* updates = root["updates"].as_table(); updates != nullptr) {
         config.updates.check = (*updates)["check"].value_or(config.updates.check);
     }
 
-    if (const auto* hotkey = root["hotkey"].as_table()) {
+    if (const auto* hotkey = root["hotkey"].as_table(); hotkey != nullptr) {
         // Enum modes parse explicitly: an unknown mode string is a
         // config typo and must fail loudly, not silently disable the
         // user's only way to click the overlay.
@@ -107,7 +108,7 @@ AppConfig load_config(const std::string& path) {
         config.hotkey.combo = (*hotkey)["combo"].value_or(config.hotkey.combo);
     }
 
-    if (const auto* dgcheck = root["dgcheck"].as_table()) {
+    if (const auto* dgcheck = root["dgcheck"].as_table(); dgcheck != nullptr) {
         config.dgcheck.enabled       = (*dgcheck)["enabled"].value_or(config.dgcheck.enabled);
         config.dgcheck.x             = (*dgcheck)["x"].value_or(config.dgcheck.x);
         config.dgcheck.y             = (*dgcheck)["y"].value_or(config.dgcheck.y);
@@ -116,7 +117,7 @@ AppConfig load_config(const std::string& path) {
         config.dgcheck.require_ctrl  = (*dgcheck)["require_ctrl"].value_or(config.dgcheck.require_ctrl);
     }
 
-    if (const auto* alarms = root["alarms"].as_table()) {
+    if (const auto* alarms = root["alarms"].as_table(); alarms != nullptr) {
         config.alarms.enabled         = (*alarms)["enabled"].value_or(config.alarms.enabled);
         config.alarms.volume          = (*alarms)["volume"].value_or(config.alarms.volume);
         config.alarms.warn_before_min = (*alarms)["warn_before_min"].value_or(config.alarms.warn_before_min);
@@ -148,7 +149,7 @@ AppConfig load_config(const std::string& path) {
         // "times" is an array for daily events; weekly events use the
         // singular "time". We normalize both into the same vector so
         // the rest of the app never cares which form the TOML used.
-        if (const auto* times = (*table)["times"].as_array()) {
+        if (const auto* times = (*table)["times"].as_array(); times != nullptr) {
             for (const auto& value : *times)
                 event.times.push_back(parse_hhmm(value.value_or("")));
         }
@@ -267,7 +268,7 @@ void set_config_value(const std::string& path, const std::string& dotted_key,
         std::size_t pos = skip_spaces(line, 0);
         const std::size_t key_start = pos;
         while (pos < line.size() &&
-               (std::isalnum(static_cast<unsigned char>(line[pos])) ||
+               (std::isalnum(static_cast<unsigned char>(line[pos])) != 0 ||
                 line[pos] == '_'))
             ++pos;
         if (line.substr(key_start, pos - key_start) != key)

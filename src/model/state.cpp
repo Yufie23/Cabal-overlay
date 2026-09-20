@@ -2,10 +2,12 @@
 // state.cpp — state.json load/save, plus reset detection.
 //
 // Serialization uses nlohmann::json. The to_json/from_json free
-// functions below are found automatically by the library through
+// functions are found automatically by the library through
 // "argument-dependent lookup" (ADL): nlohmann calls them because
-// they live in the same namespace as the type they convert. This
-// is the library's idiom — do not move them into a class.
+// they live in the same namespace as the type they convert. They
+// sit in the anonymous namespace because only this file uses them —
+// ADL still finds them: an anonymous namespace is part of its
+// enclosing (global) namespace for lookup in this translation unit.
 // ─────────────────────────────────────────────────────────────
 
 #include "state.h"
@@ -33,9 +35,13 @@ TaskType task_type_from(const std::string& text) {
 } // anonymous namespace
 
 // These two live at GLOBAL scope on purpose: nlohmann finds them by
-// argument-dependent lookup, and for a global-namespace type like
-// Task that search only covers the global namespace — hiding them in
-// an anonymous namespace makes them invisible to ADL.
+// argument-dependent lookup, and ADL explicitly IGNORES using-
+// directives — including the implicit one that pulls an anonymous
+// namespace's names into global scope. Hiding them there makes them
+// invisible to the library (verified: the build breaks). The NOLINT
+// silences the internal-linkage suggestion, which is wrong for ADL
+// hooks.
+// NOLINTNEXTLINE(misc-use-internal-linkage)
 void to_json(nlohmann::json& j, const Task& task) {
     j = nlohmann::json{
         {"id", task.id},
@@ -51,6 +57,7 @@ void to_json(nlohmann::json& j, const Task& task) {
 // And back. Every field falls back to a sane default when absent,
 // so an older or partial file still loads (mirrors the tracker's
 // own defensive import).
+// NOLINTNEXTLINE(misc-use-internal-linkage)
 void from_json(const nlohmann::json& j, Task& task) {
     task.id        = j.value("id", "");
     task.type      = task_type_from(j.value("type", "daily"));

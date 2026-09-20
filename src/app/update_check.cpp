@@ -20,7 +20,7 @@
 
 namespace {
 
-constexpr char kReleasesApi[] =
+constexpr const char* kReleasesApi =
     "https://api.github.com/repos/Yufie23/Cabal-overlay/releases/latest";
 
 struct Payload {
@@ -69,7 +69,7 @@ void on_curl_done(GObject* source, GAsyncResult* result,
     GError* error = nullptr;
     const gboolean ok = g_subprocess_communicate_utf8_finish(
         G_SUBPROCESS(source), result, &output, nullptr, &error);
-    if (!ok) {
+    if (ok == FALSE) {
         g_message("update check: %s (offline is fine; next run retries)",
                   error != nullptr ? error->message : "curl failed");
         if (error != nullptr) g_error_free(error);
@@ -110,7 +110,8 @@ void check_latest(const std::string& current_version,
         if (error != nullptr) g_error_free(error);
         return;
     }
-    auto* payload = new Payload{ std::move(on_newer), current_version };
+    auto* payload = new Payload{ .on_newer = std::move(on_newer),
+                                 .current = current_version };
     g_subprocess_communicate_utf8_async(process, nullptr, nullptr,
                                         on_curl_done, payload);
     g_object_unref(process); // the async operation holds its own ref

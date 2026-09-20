@@ -114,7 +114,7 @@ void measure_on_monitor(GtkWidget* widget, int* width, int* height,
             g_list_model_get_item(gdk_display_get_monitors(display), 0));
         owned = true; // g_list_model_get_item returns a new ref
     }
-    *geo = { 0, 0, 0, 0 };
+    *geo = { .x = 0, .y = 0, .width = 0, .height = 0 };
     if (monitor != nullptr) {
         gdk_monitor_get_geometry(monitor, geo);
         if (owned) g_object_unref(monitor);
@@ -127,19 +127,21 @@ void measure_on_monitor(GtkWidget* widget, int* width, int* height,
 void convert_to_custom(DragState* state) {
     int width = 0;
     int height = 0;
-    GdkRectangle geo { 0, 0, 0, 0 };
+    GdkRectangle geo { .x = 0, .y = 0, .width = 0, .height = 0 };
     measure_on_monitor(GTK_WIDGET(state->window), &width, &height, &geo);
 
     const AnchorEdges edges = parse_anchor(state->current.anchor);
     const int mx = state->current.margin_x;
     const int my = state->current.margin_y;
     // Unanchored axis = compositor-centered; margin plays no role.
-    const int abs_x = edges.left   ? mx
-                    : edges.right  ? geo.width - mx - width
-                    : (geo.width - width) / 2;
-    const int abs_y = edges.top    ? my
-                    : edges.bottom ? geo.height - my - height
-                    : (geo.height - height) / 2;
+    int abs_x = 0;
+    if (edges.left) abs_x = mx;
+    else if (edges.right) abs_x = geo.width - mx - width;
+    else abs_x = (geo.width - width) / 2;
+    int abs_y = 0;
+    if (edges.top) abs_y = my;
+    else if (edges.bottom) abs_y = geo.height - my - height;
+    else abs_y = (geo.height - height) / 2;
 
     state->current.anchor = "custom";
     state->current.margin_x = abs_x;
@@ -216,7 +218,7 @@ Placement overlay_apply_placement(GtkWindow* window, Placement placement) {
             // caller may persist the returned placement.
             int width = 0;
             int height = 0;
-            GdkRectangle geo { 0, 0, 0, 0 };
+            GdkRectangle geo { .x = 0, .y = 0, .width = 0, .height = 0 };
             measure_on_monitor(GTK_WIDGET(window), &width, &height, &geo);
             const int abs_x = state->current.margin_x;
             const int abs_y = state->current.margin_y;
@@ -266,8 +268,11 @@ void overlay_set_interactive(GtkWindow* window, bool enabled) {
 void overlay_enable_drag(GtkWindow* window,
                          std::function<void(int, int)> on_moved,
                          std::function<void()> on_tap) {
-    auto* state = new DragState{ window, std::move(on_moved),
-                                 std::move(on_tap), {}, false };
+    auto* state = new DragState{ .window = window,
+                                 .on_moved = std::move(on_moved),
+                                 .on_tap = std::move(on_tap),
+                                 .current = {},
+                                 .converted = false };
     g_object_set_data_full(G_OBJECT(window), "cabal-drag", state,
                            delete_drag_state);
 

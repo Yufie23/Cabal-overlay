@@ -17,7 +17,7 @@
 #include <utility>
 #include <vector>
 
-enum class TaskType {
+enum class TaskType : std::uint8_t {
     Daily,
     Weekly,
 };
@@ -52,8 +52,8 @@ public:
     // nullptr when the id does not exist (a pointer instead of a
     // reference so "not found" is representable — checked access,
     // no exceptions for a routine lookup).
-    Task* find(const std::string& id);
-    const Task* find(const std::string& id) const;
+    [[nodiscard]] Task* find(const std::string& id);
+    [[nodiscard]] const Task* find(const std::string& id) const;
 
     // Adds delta to the counter, clamped to [0, goal] when a goal
     // exists. Reaching the goal auto-completes the task, exactly
@@ -70,10 +70,10 @@ public:
     // {completed, total} for one type. A task with a goal counts
     // as completed once its counter reaches it, even if the flag
     // was never set — tracker semantics.
-    std::pair<int, int> progress(TaskType type) const;
+    [[nodiscard]] std::pair<int, int> progress(TaskType type) const;
 
-    const std::vector<Task>& all() const { return m_tasks; }
-    std::vector<Task>& all() { return m_tasks; }
+    [[nodiscard]] const std::vector<Task>& all() const { return m_tasks; }
+    [[nodiscard]] std::vector<Task>& all() { return m_tasks; }
 
     // Moves the id counter past the highest numeric id currently in
     // the list (called after loading a file, so new ids never

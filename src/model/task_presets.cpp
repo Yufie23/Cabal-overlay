@@ -143,8 +143,6 @@ void save_preset_state(const std::filesystem::path& path,
 bool apply_preset_resets(PresetState& state,
                          const std::vector<TaskPreset>& presets,
                          std::chrono::system_clock::time_point now) {
-    bool changed = false;
-
     const bool daily = state.last_daily_reset != berlin_date_string(now);
     const bool weekly =
         state.last_weekly_reset != berlin_weekly_reset_string(now);
@@ -155,11 +153,13 @@ bool apply_preset_resets(PresetState& state,
         for (const PresetTask& task : preset.tasks) {
             if ((daily && task.type == TaskType::Daily) ||
                 (weekly && task.type == TaskType::Weekly)) {
-                changed |= progress.counts.erase(task.name) > 0;
-                changed |= progress.completed.erase(task.name) > 0;
+                progress.counts.erase(task.name);
+                progress.completed.erase(task.name);
             }
         }
     }
+    // A boundary passed: the markers changed, so the caller persists
+    // even when no list had progress to clear (mirrors apply_resets).
     if (daily) state.last_daily_reset = berlin_date_string(now);
     if (weekly) state.last_weekly_reset = berlin_weekly_reset_string(now);
     return true;
