@@ -1,0 +1,91 @@
+{
+  "comment": "Named preset task lists. Each list is a fixed template: the user can reorder its tasks and track progress, but not add or remove. 'goal' may be omitted to use the dungeon catalog's maxRuns. 'type' is 'daily' or 'weekly'. Names resolve SMARTLY against the catalog at load: exact, case-insensitive, short code ('AC'), unique partial name ('abandoned'), even small typos ('abandon city') — ambiguous or unknown names stay as plain tasks with a console warning. Clans: copy a block and adapt names/times to your own routines.",
+  "lists": [
+    {
+      "id": "300k-500k",
+      "name": "300k-500k",
+      "tasks": [
+        { "name": "Holy Windmill", "type": "daily" },
+        { "name": "Aos1", "type": "daily" },
+        { "name": "PCH", "type": "daily" },
+        { "name": "SCh", "type": "daily" },
+        { "name": "CFh", "type": "daily" },
+        { "name": "lhh", "type": "daily" },
+        { "name": "HVh", "type": "daily" },
+        { "name": "CA5", "type": "daily" },
+        { "name": "ca6", "type": "daily" },
+        { "name": "sod", "type": "daily" },
+        { "name": "alh", "type": "daily" },
+        { "name": "asc", "type": "daily" },
+        { "name": "acf", "type": "daily" },
+        { "name": "apc", "type": "daily" },
+        { "name": "ahv", "type": "daily" },
+        { "name": "FD", "type": "daily" }
+      ]
+    },
+    {
+      "id": "500k-800k",
+      "name": "500k-800k",
+      "tasks": [
+        { "name": "hk", "type": "daily" },
+        { "name": "hw", "type": "daily" },
+        { "name": "eop", "type": "daily" },
+        { "name": "aic1", "type": "daily" },
+        { "name": "aic2", "type": "daily" },
+        { "name": "ahv", "type": "daily" },
+        { "name": "Aos1", "type": "daily" },
+        { "name": "Aos2", "type": "daily" },
+        { "name": "fd", "type": "daily" }
+      ]
+    },
+    {
+      "id": "800k-1.2m",
+      "name": "800k-1.2m",
+      "tasks": [
+        { "name": "hk", "type": "daily" },
+        { "name": "hw", "type": "daily" },
+        { "name": "hs", "type": "daily" },
+        { "name": "afi", "type": "daily" },
+        { "name": "eop", "type": "daily" },
+        { "name": "Aic1", "type": "daily" },
+        { "name": "Aic2", "type": "daily" },
+        { "name": "eod3", "type": "daily"},
+        { "name": "eod3p2", "type": "daily"},
+        { "name": "fd", "type": "daily"}
+      ]
+    },
+    {
+      "id": "1.2m-1.5m",
+      "name": "1.2m-1.5m",
+      "tasks": [
+        { "name": "eca", "type":"daily"},
+        { "name": "gi", "type":"daily"},
+        { "name": "hk", "type": "daily" },
+        { "name": "hs", "type": "daily" },
+        { "name": "ac", "type": "daily" },
+        { "name": "fn", "type": "daily" },
+        { "name": "at", "type": "daily" },
+        { "name": "fc", "type": "daily" },
+        { "name": "tm", "type": "daily"},
+        { "name": "fd", "type": "daily"}
+      ]
+    },
+    {
+      "id": "+1.5m",
+      "name": "+1.5m",
+      "tasks": [
+        { "name": "eca", "type":"daily"},
+        { "name": "gi", "type":"daily"},
+        { "name": "hs", "type": "daily" },
+        { "name": "god", "type": "daily" },
+        { "name": "mi", "type": "daily" },
+        { "name": "al", "type": "daily" },
+        { "name": "fn", "type": "daily" },
+        { "name": "at", "type": "daily" },
+        { "name": "fc", "type": "daily" },
+        { "name": "tm", "type": "daily"},
+        { "name": "fd", "type": "daily"}
+      ]
+    }
+  ]
+}

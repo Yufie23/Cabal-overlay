@@ -29,6 +29,14 @@ anchor = "custom"  # a single edge (no top/bottom) centers vertically
 margin_x = 1209
 margin_y = 520
 opacity = 0.9
+# Display toggles (the panel header has quick buttons for both):
+# short_names = true shows the catalog short code (AC, MI, FT3);
+# false shows full dungeon names.
+short_names = true
+# collapsed = true shows only the first 3 pending tasks plus a
+# "… N more" line — handy for long preset lists. Display-only: the
+# dgcheck counter still walks the full list.
+collapsed = false
 
 # How the global "make overlay clickable" combo reaches the app.
 #

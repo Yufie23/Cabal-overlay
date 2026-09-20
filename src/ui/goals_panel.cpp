@@ -18,6 +18,7 @@
 
 #include <algorithm>
 #include <format>
+#include <limits>
 #include <map>
 #include <set>
 
@@ -45,11 +46,13 @@ struct RemovePayload {
     std::string task_id;
 };
 
-// Drag-and-drop payload for the panel-wide drop target. The AppState
-// pointer is owned by main.cpp and outlives every rebuild.
+// Drag-and-drop payload for the panel-wide drop target. The TaskList
+// pointer addresses main.cpp's materialized active list, which is
+// stable storage: its CONTENTS are rebuilt on refresh, the object
+// itself outlives every callback.
 struct DropPayload {
     GoalsActions actions;
-    const AppState* state;
+    const TaskList* tasks;
     GtkWidget* box;
 };
 
@@ -138,7 +141,7 @@ gboolean on_box_drop(GtkDropTarget*, const GValue* value, double,
     const char* dragged_id = g_value_get_string(value);
     if (dragged_id == nullptr) return FALSE;
 
-    const TaskList& tasks = payload->state->tasks;
+    const TaskList& tasks = *payload->tasks;
     const int source = index_of(tasks, dragged_id);
     if (source < 0) return FALSE;
 
@@ -423,7 +426,7 @@ GtkWidget* make_remove_button(const GoalsActions& actions, const Task& task) {
 }
 
 GtkWidget* make_row(const Task& task, const GoalsActions& actions,
-                    const std::vector<Dungeon>& dungeons) {
+                    const std::vector<Dungeon>& dungeons, bool short_names) {
     auto* row = gtk_box_new(GTK_ORIENTATION_VERTICAL, 2);
     gtk_widget_add_css_class(row, "goal-row");
     // The drag source reads the id from here; the drop target maps
@@ -442,14 +445,17 @@ GtkWidget* make_row(const Task& task, const GoalsActions& actions,
 
     auto* line = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
 
-    // Rows show the clan's short code when the catalog has one; the
-    // full name survives as the label's tooltip. The stored task name
-    // stays the full name (tracker-schema compatibility).
+    // Rows show the clan's short code or the full name, per the
+    // panel.short_names toggle; the stored task name always stays the
+    // full name (tracker-schema compatibility). The tooltip shows the
+    // OTHER form — whatever the row is not displaying.
     const std::string code = short_code_for(dungeons, task.name);
-    auto* name = gtk_label_new(code.empty() ? task.name.c_str()
-                                            : code.c_str());
+    const bool show_code = short_names && !code.empty();
+    auto* name = gtk_label_new(show_code ? code.c_str()
+                                         : task.name.c_str());
     if (!code.empty())
-        gtk_widget_set_tooltip_text(name, task.name.c_str());
+        gtk_widget_set_tooltip_text(
+            name, show_code ? task.name.c_str() : code.c_str());
     gtk_widget_add_css_class(name, "goal-name");
     gtk_label_set_xalign(GTK_LABEL(name), 0.0); // left-aligned
     gtk_widget_set_hexpand(name, TRUE);         // pushes the counter right
@@ -478,7 +484,10 @@ GtkWidget* make_row(const Task& task, const GoalsActions& actions,
     } else {
         gtk_box_append(GTK_BOX(line), make_toggle_button(actions, task));
     }
-    gtk_box_append(GTK_BOX(line), make_remove_button(actions, task));
+    // Locked tasks (preset templates) keep their content fixed: no
+    // remove button. Reorder and progress tracking stay available.
+    if (!task.locked)
+        gtk_box_append(GTK_BOX(line), make_remove_button(actions, task));
 
     gtk_box_append(GTK_BOX(row), line);
 
@@ -531,12 +540,20 @@ void collect_bar_targets(GtkWidget* widget,
 
 // Emits the section header on the first VISIBLE (not done) task of
 // this type, so a type whose tasks are all done contributes nothing.
+// `budget` caps how many rows may still be emitted (collapsed view);
+// rows past the budget count into `hidden` instead, and a section
+// whose rows all overflow prints no header at all.
 void append_section(GtkWidget* panel, const char* title, TaskType type,
-                    const AppState& state, const GoalsActions& actions,
-                    const std::vector<Dungeon>& dungeons) {
+                    const TaskList& tasks, const GoalsActions& actions,
+                    const std::vector<Dungeon>& dungeons, bool short_names,
+                    int* budget, int* hidden) {
     bool first = true;
-    for (const Task& task : state.tasks.all()) {
+    for (const Task& task : tasks.all()) {
         if (task.type != type || row_is_done(task)) continue;
+        if (*budget <= 0) {
+            ++(*hidden);
+            continue;
+        }
         if (first) {
             auto* header = gtk_label_new(title);
             gtk_widget_add_css_class(header, "goal-section");
@@ -544,7 +561,9 @@ void append_section(GtkWidget* panel, const char* title, TaskType type,
             gtk_box_append(GTK_BOX(panel), header);
             first = false;
         }
-        gtk_box_append(GTK_BOX(panel), make_row(task, actions, dungeons));
+        --(*budget);
+        gtk_box_append(GTK_BOX(panel),
+                       make_row(task, actions, dungeons, short_names));
     }
 }
 
@@ -570,9 +589,13 @@ GtkStringList* make_dungeon_model(const std::vector<Dungeon>& dungeons) {
 
 } // anonymous namespace
 
-std::string goals_signature(const AppState& state) {
-    std::string signature;
-    for (const Task& task : state.tasks.all()) {
+std::string goals_signature(const TaskList& tasks, bool short_names,
+                            bool collapsed) {
+    // The display toggles belong to the fingerprint: flipping one
+    // must rebuild the rows even though no task changed.
+    std::string signature =
+        std::format("{}:{};", short_names, collapsed);
+    for (const Task& task : tasks.all()) {
         // static_cast<int> on the enum: enum class does not convert
         // to int implicitly (that is the point of the scoped enum),
         // but for a fingerprint string any stable numeric form works.
@@ -583,15 +606,16 @@ std::string goals_signature(const AppState& state) {
     return signature;
 }
 
-void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
+void goals_panel_refresh(GtkWidget* goals_box, const TaskList& tasks,
                          const GoalsActions& actions,
-                         const std::vector<Dungeon>& dungeons) {
+                         const std::vector<Dungeon>& dungeons,
+                         bool short_names, bool collapsed) {
     // The drop target lives on the box itself, which persists across
     // rebuilds — install it exactly once (guarded by its own data
     // slot). Rows are drag SOURCES and get rebuilt every refresh, so
     // those are attached per-row in make_row instead.
     if (g_object_get_data(G_OBJECT(goals_box), "cabal-drop") == nullptr) {
-        auto* payload = new DropPayload{actions, &state, goals_box};
+        auto* payload = new DropPayload{actions, &tasks, goals_box};
         g_object_set_data_full(G_OBJECT(goals_box), "cabal-drop", payload,
                                delete_payload<DropPayload>);
         auto* drop = gtk_drop_target_new(G_TYPE_STRING, GDK_ACTION_COPY);
@@ -605,7 +629,7 @@ void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
 
     // Tasks that completed since the last render get a ghost instead
     // of vanishing (they were visible, they are done now).
-    for (const Task& task : state.tasks.all()) {
+    for (const Task& task : tasks.all()) {
         if (!row_is_done(task)) continue;
         if (g_visible_last.count(task.id) == 0) continue;
         if (g_fading.count(task.id) != 0) continue;
@@ -617,7 +641,7 @@ void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
     // A daily/weekly reset may revive a task while its ghost is still
     // fading: cancel the ghost and let the real row render.
     for (auto it = g_fading.begin(); it != g_fading.end();) {
-        const Task* revived = state.tasks.find(it->first);
+        const Task* revived = tasks.find(it->first);
         if (revived != nullptr && !row_is_done(*revived)) {
             detach_ghost(it->second);
             it = g_fading.erase(it);
@@ -632,16 +656,31 @@ void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
     while (GtkWidget* child = gtk_widget_get_first_child(goals_box))
         gtk_box_remove(GTK_BOX(goals_box), child);
 
-    append_section(goals_box, "DAILY", TaskType::Daily, state, actions,
-                   dungeons);
-    append_section(goals_box, "WEEKLY", TaskType::Weekly, state, actions,
-                   dungeons);
+    // Collapsed view: at most kCollapsedRowLimit visible rows, the
+    // rest collapse into a "… N more" hint. Display-only — every
+    // other consumer (dgcheck, signatures) sees the full list.
+    constexpr int kCollapsedRowLimit = 3;
+    int budget = collapsed ? kCollapsedRowLimit
+                           : std::numeric_limits<int>::max();
+    int hidden = 0;
+    append_section(goals_box, "DAILY", TaskType::Daily, tasks, actions,
+                   dungeons, short_names, &budget, &hidden);
+    append_section(goals_box, "WEEKLY", TaskType::Weekly, tasks, actions,
+                   dungeons, short_names, &budget, &hidden);
+    if (hidden > 0) {
+        const std::string more = std::format("… {} more", hidden);
+        auto* hint = gtk_label_new(more.c_str());
+        gtk_widget_add_css_class(hint, "goal-more-hint");
+        gtk_label_set_xalign(GTK_LABEL(hint), 0.0);
+        gtk_box_append(GTK_BOX(goals_box), hint);
+    }
 
     // Ghosts re-create from the snapshot on every rebuild, so a
     // rebuild mid-fade restarts the widget but not the clock.
     for (auto& entry : g_fading) {
         FadingRow& row = entry.second;
-        GtkWidget* ghost = make_row(row.snapshot, actions, dungeons);
+        GtkWidget* ghost = make_row(row.snapshot, actions, dungeons,
+                                    short_names);
         gtk_widget_set_sensitive(ghost, FALSE); // leaving: no input
         gtk_widget_set_opacity(ghost, fade_fraction(row));
         row.widget = ghost;
@@ -651,7 +690,7 @@ void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
     if (!g_fading.empty()) ensure_fade_ticker();
 
     g_visible_last.clear();
-    for (const Task& task : state.tasks.all())
+    for (const Task& task : tasks.all())
         if (!row_is_done(task)) g_visible_last.insert(task.id);
 
     // Swap in fresh animation memory: bars animate from the previous

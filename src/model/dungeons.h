@@ -43,3 +43,11 @@ std::string short_code_for(const std::vector<Dungeon>& dungeons,
 
 // Case-insensitive substring match on the name OR the short code.
 bool dungeon_matches(const Dungeon& dungeon, const std::string& query);
+
+// Resolves a possibly-misspelled name against the catalog, strictest
+// first: exact, case-insensitive, short code, UNIQUE substring, then
+// UNIQUE edit distance <= 3. nullptr when nothing matches uniquely —
+// a wrong guess is worse than no guess (the caller keeps the literal
+// name as a plain task and warns).
+const Dungeon* find_dungeon_smart(const std::vector<Dungeon>& dungeons,
+                                  const std::string& name);

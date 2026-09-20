@@ -148,8 +148,26 @@ Known Wine-only quirks (NOT bugs in our code): garbled glyphs (the
 prefix lacks the fonts; real Windows uses Segoe UI) and keyboard-layout
 registry warnings.
 
-## Conventions
+- Preset task lists (`model/task_presets.*`): read-only templates from
+  `data/task_lists.json` (id, name, tasks with optional goal resolved
+  from the catalog). The panel shows one source at a time — "custom"
+  (g_state.tasks) or a preset MATERIALIZED into a TaskList view
+  (g_active_tasks) — and actions route by the active source, so the
+  view layer never learns the difference. Preset progress and the
+  active-list choice live in presets.json, NEVER in state.json: that
+  file mirrors the clan tracker's schema and must stay import-
+  compatible. Preset tasks render locked (no remove button) but keep
+  reorder (order override in presets.json) and progress. Template
+  names resolve via find_dungeon_smart (exact → case-insensitive →
+  short code → unique substring → unique Levenshtein ≤ 3).
+- Panel display toggles (`panel.short_names`, `panel.collapsed`):
+  header buttons flip the field optimistically AND persist to the
+  TOML (config reload lands on the same values). Collapsed caps
+  visible rows at 3 with a "… N more" hint — display-only, dgcheck
+  and signatures see the full list; the display modes live in
+  goals_signature so a flip rebuilds the rows.
 
+## Conventions
 - The vendored HTML tracker (`Prosperity_Task_Tracker.v6.1/`) is a read-only
   upstream reference. Its data (dungeon list, schedules) is extracted into
   `data/` and `config/`; regenerate `data/dungeons.json` when the clan

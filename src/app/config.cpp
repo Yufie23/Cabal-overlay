@@ -84,6 +84,8 @@ AppConfig load_config(const std::string& path) {
         config.panel.margin_x   = (*panel)["margin_x"].value_or(config.panel.margin_x);
         config.panel.margin_y   = (*panel)["margin_y"].value_or(config.panel.margin_y);
         config.panel.opacity    = (*panel)["opacity"].value_or(config.panel.opacity);
+        config.panel.short_names = (*panel)["short_names"].value_or(config.panel.short_names);
+        config.panel.collapsed  = (*panel)["collapsed"].value_or(config.panel.collapsed);
     }
 
     if (const auto* hotkey = root["hotkey"].as_table()) {

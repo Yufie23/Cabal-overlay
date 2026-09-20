@@ -125,7 +125,7 @@
     {
       "name": "Holy Shrine",
       "shortName": "HS",
-      "maxRuns": 2
+      "maxRuns": 6
     },
     {
       "name": "Tower of the Dead B3F (Part2)",
@@ -144,18 +144,22 @@
     },
     {
       "name": "Tower of Undead B3F",
+      "shortName": "eop3",
       "maxRuns": 30
     },
     {
       "name": "Eternal Chaos Arena",
+      "shortName":"ECA",
       "maxRuns": 8
     },
     {
       "name": "Forbidden Island (Awakened)",
+      "shortName": "AFI",
       "maxRuns": 30
     },
     {
       "name": "Pandemonium",
+      "shortName": "PANDE",
       "maxRuns": 30
     },
     {
@@ -216,7 +220,7 @@
     {
       "name": "Holy Windmill",
       "shortName": "HW",
-      "maxRuns": 3
+      "maxRuns": 9
     },
     {
       "name": "Labyrinth",

@@ -80,6 +80,12 @@ struct PanelConfig {
     int margin_x = 10;
     int margin_y = 0;
     double opacity = 0.9;
+    // Display toggles (header buttons in the panel; persisted here):
+    // short_names → rows show the catalog short code, else full names.
+    bool short_names = true;
+    // collapsed → only the first few pending tasks plus a "… N more"
+    // hint; a display-only compression, logic sees the full list.
+    bool collapsed = false;
 };
 
 // How the global "toggle interactive" combo reaches the app:

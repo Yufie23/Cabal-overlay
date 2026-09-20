@@ -36,22 +36,29 @@ struct GoalsActions {
 };
 
 // Fingerprint of everything the task rows render: ids, names, types,
-// counters, goals, flags. Cheap to compute, cheap to compare; when
-// it differs from the last render, the rows must be rebuilt. This is
-// the "key" pattern from React: a coarse diff upfront, then a full
-// rebuild instead of fine-grained mutation.
-std::string goals_signature(const AppState& state);
+// counters, goals, flags, plus the display toggles (flipping one must
+// rebuild too). Cheap to compute, cheap to compare; when it differs
+// from the last render, the rows must be rebuilt. This is the "key"
+// pattern from React: a coarse diff upfront, then a full rebuild
+// instead of fine-grained mutation.
+std::string goals_signature(const TaskList& tasks, bool short_names,
+                            bool collapsed);
 
 // Rebuilds the task rows from scratch inside `goals_box`: drops every
 // child and re-creates the DAILY/WEEKLY section headers and rows
-// (short code + counter + bump buttons + progress bar; the full name
-// is the label tooltip). `dungeons` maps stored names to short codes.
+// (name or short code + counter + bump buttons + progress bar).
+// `dungeons` maps stored names to short codes; `short_names` picks
+// which of the two the rows show. `tasks` is the materialized ACTIVE
+// list — the custom list or a preset view; locked tasks render
+// without the remove button. `collapsed` caps visible rows at 3 plus
+// a "… N more" hint (display-only).
 // Only the goals_box is touched — the caller packs the add-task form
 // and its toggle button OUTSIDE this box so an open form survives
 // rebuilds.
-void goals_panel_refresh(GtkWidget* goals_box, const AppState& state,
+void goals_panel_refresh(GtkWidget* goals_box, const TaskList& tasks,
                          const GoalsActions& actions,
-                         const std::vector<Dungeon>& dungeons);
+                         const std::vector<Dungeon>& dungeons,
+                         bool short_names, bool collapsed);
 
 // Builds the collapsible "add task" form, initially hidden. Packed by
 // the caller below the goals box. `dungeons` must outlive the form

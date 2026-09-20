@@ -21,6 +21,15 @@ not do.
   game events.
 - **Goals panel** (right edge): tracked dungeon tasks with click counters
   and progress bars. Completed goals fade out automatically.
+- **Preset task lists**: the panel switcher picks between your free-form
+  "Custom" list and fixed templates from `data/task_lists.json` (a clan
+  ships its own dailies/weeklies). Presets can be reordered and their
+  progress is tracked, but their content is read-only. Names in the
+  template resolve smartly against the catalog (short codes, partial
+  names, small typos — unique matches only).
+- **Panel display toggles**: quick header buttons flip rows between
+  short codes and full names, and between the full list and a
+  collapsed "first 3 + … N more" view for long lists.
 - **Alarms**: a warning chime N minutes before scheduled events
   (configurable per event, volume supported on Linux).
 - **DG Check**: auto-increments a dungeon counter when you Ctrl+click the
@@ -145,9 +154,16 @@ GTK dependencies exists; the MSYS2 route above is the supported one.
 ## Data and configuration
 
 - Linux config ships with the app (`config/overlay.toml` in the install
-  directory); task/state data is `~/.local/share/cabal-overlay/state.json`.
+  directory); task/state data is `~/.local/share/cabal-overlay/state.json`
+  and preset-list progress is `presets.json` next to it.
 - Windows config: `%APPDATA%\cabal-overlay\overlay.toml` (seeded from the
   shipped defaults on first run); state lives next to it.
+- Schedules (including the Guild Dungeon times) are plain
+  `[[schedule]]` entries in `overlay.toml` — every clan sets its own
+  without recompiling.
+- Preset task lists live in `data/task_lists.json`: copy a block,
+  rename it, list your dungeons (`type` daily/weekly, `goal` optional —
+  the catalog's maxRuns is used when omitted).
 
 The dungeon catalog (`data/dungeons.json`) is extracted from the clan's
 Prosperity Task Tracker, so exported state backups stay interchangeable

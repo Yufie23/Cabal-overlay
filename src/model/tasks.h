@@ -30,6 +30,9 @@ struct Task {
     int goal = 0;   // 0 = no goal (plain checkbox task)
     int count = 0;  // progress counter toward the goal
     std::string notes;
+    // Display-time flag, never serialized: preset tasks render without
+    // the remove button (their content belongs to the template).
+    bool locked = false;
 };
 
 class TaskList {

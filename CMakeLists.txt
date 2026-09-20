@@ -55,6 +55,7 @@ set(APP_SOURCES
     src/model/dungeons.cpp
     src/time/schedule.cpp
     src/model/state.cpp
+    src/model/task_presets.cpp
     src/model/tasks.cpp
     src/ui/goals_panel.cpp
     src/ui/settings_window.cpp

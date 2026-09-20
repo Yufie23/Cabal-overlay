@@ -52,6 +52,7 @@
 #include "platform/tray/tray.h"
 #include "time/schedule.h"
 #include "model/state.h"
+#include "model/task_presets.h"
 #include "model/tasks.h"
 #include "ui/goals_panel.h"
 #include "ui/settings_window.h"
@@ -85,9 +86,11 @@ std::string app_data_file(const char* name) {
 }
 const std::string kConfigPath = app_data_file("overlay.toml");
 constexpr char kDungeonsPath[] = "data\\dungeons.json";
+constexpr char kTaskListsPath[] = "data\\task_lists.json";
 #else
 const std::string kConfigPath = "config/overlay.toml";
 constexpr char kDungeonsPath[] = "data/dungeons.json";
+constexpr char kTaskListsPath[] = "data/task_lists.json";
 #endif
 
 // ── Module state ─────────────────────────────────────────────
@@ -112,6 +115,19 @@ GFileMonitor* g_config_monitor = nullptr;
 AppState      g_state;
 std::filesystem::path g_state_path;
 std::vector<Dungeon>  g_dungeons;
+// Preset task lists (data/task_lists.json) and their runtime state
+// (presets.json — deliberately separate from the tracker-schema
+// state.json). See model/task_presets.h.
+std::vector<TaskPreset> g_presets;
+PresetState   g_preset_state;
+std::filesystem::path g_presets_path;
+// The task list the panel currently shows: a copy of g_state.tasks
+// for "custom", or the materialized view of the active preset. Stable
+// storage — only its contents are rebuilt per refresh — because panel
+// callbacks and the dgcheck counter hold pointers into it.
+TaskList      g_active_tasks;
+GtkWidget*    g_list_dropdown = nullptr;   // preset switcher (panel header)
+GtkWidget*    g_add_task_button = nullptr; // hidden while a preset is active
 // Remembers which event occurrences already got their warning.
 AlarmTracker  g_alarms;
 // The GtkApplication, kept for sending GNotifications from the
@@ -161,14 +177,95 @@ void persist_state() {
     }
 }
 
+void persist_preset_state() {
+    try {
+        save_preset_state(g_presets_path, g_preset_state);
+    } catch (const std::exception& error) {
+        g_warning("could not save presets: %s", error.what());
+    }
+}
+
+// ── Preset lists ───────────────────────────────────────────────
+// The panel shows ONE source at a time: "custom" (g_state.tasks, the
+// classic free-form list) or a preset template from
+// data/task_lists.json. Actions route by the active source so the
+// view layer never learns the difference.
+
+TaskPreset* find_preset(const std::string& id) {
+    for (TaskPreset& preset : g_presets)
+        if (preset.id == id) return &preset;
+    return nullptr;
+}
+
+bool preset_active() {
+    return find_preset(g_preset_state.active_list) != nullptr;
+}
+
+// Preset row ids are "p:<list id>:<task name>" — stable across
+// refreshes so progress, ghosts and drag-and-drop all resolve.
+std::string preset_task_name(const TaskPreset& preset,
+                             const std::string& id) {
+    const std::string prefix = "p:" + preset.id + ":";
+    if (id.starts_with(prefix)) return id.substr(prefix.size());
+    return id;
+}
+
+// Rebuilds g_active_tasks from the active source: a copy of the
+// custom list, or the preset definition plus the user's progress and
+// order override. Template edits are tolerated both ways: names the
+// override does not know are appended, names the template dropped
+// are skipped.
+void materialize_active_tasks() {
+    TaskPreset* preset = find_preset(g_preset_state.active_list);
+    if (preset == nullptr) {
+        g_active_tasks = g_state.tasks;
+        return;
+    }
+
+    TaskList list;
+    PresetListProgress& progress = g_preset_state.lists[preset->id];
+    std::vector<std::string> order = progress.order;
+    for (const PresetTask& task : preset->tasks)
+        if (std::find(order.begin(), order.end(), task.name) == order.end())
+            order.push_back(task.name);
+
+    for (const std::string& name : order) {
+        const PresetTask* def = nullptr;
+        for (const PresetTask& task : preset->tasks)
+            if (task.name == name) { def = &task; break; }
+        if (def == nullptr) continue; // removed from the template since
+
+        Task task;
+        task.id = "p:" + preset->id + ":" + def->name;
+        task.type = def->type;
+        task.name = def->name;
+        task.goal = def->goal;
+        task.locked = true; // template content: no remove button
+        if (auto it = progress.counts.find(name); it != progress.counts.end())
+            task.count = it->second;
+        if (auto it = progress.completed.find(name); it != progress.completed.end())
+            task.completed = it->second;
+        list.all().push_back(std::move(task));
+    }
+    g_active_tasks = std::move(list);
+}
+
 // Rebuilds the task rows and syncs panel visibility. The single
 // refresh path used by the tick AND by every user action, so both
 // stay consistent. An open add-task form keeps the panel on screen
 // even with zero tasks.
 void refresh_goals_panel() {
     if (g_goals_box == nullptr || g_panel_window == nullptr) return;
-    goals_panel_refresh(g_goals_box, g_state, g_actions, g_dungeons);
-    const bool visible = !g_state.tasks.all().empty() ||
+    materialize_active_tasks();
+    goals_panel_refresh(g_goals_box, g_active_tasks, g_actions, g_dungeons,
+                        g_config.panel.short_names, g_config.panel.collapsed);
+    // Preset lists are fixed templates: adding is meaningless there.
+    const bool preset = preset_active();
+    if (g_add_task_button != nullptr)
+        gtk_widget_set_visible(g_add_task_button, !preset);
+    if (preset && g_goals_form != nullptr)
+        gtk_widget_set_visible(g_goals_form, FALSE);
+    const bool visible = !g_active_tasks.all().empty() ||
                          gtk_widget_get_visible(g_goals_form);
     gtk_widget_set_visible(GTK_WIDGET(g_panel_window), visible);
     // A surface that comes back from hidden is clickable by
@@ -182,6 +279,25 @@ void refresh_goals_panel() {
 GoalsActions make_goals_actions() {
     GoalsActions actions;
     actions.bump_count = [](const std::string& id, int delta) {
+        if (TaskPreset* preset = find_preset(g_preset_state.active_list)) {
+            // Mirror of TaskList::bump_count on the preset's progress:
+            // clamp to [0, goal], auto-complete when the goal is met.
+            PresetListProgress& progress = g_preset_state.lists[preset->id];
+            const std::string name = preset_task_name(*preset, id);
+            int goal = 0;
+            for (const PresetTask& task : preset->tasks)
+                if (task.name == name) goal = task.goal;
+            int& count = progress.counts[name];
+            count += delta;
+            if (count < 0) count = 0;
+            if (goal > 0) {
+                count = std::min(count, goal);
+                progress.completed[name] = count >= goal;
+            }
+            persist_preset_state();
+            refresh_goals_panel();
+            return;
+        }
         // Reaching the goal sets completed in the model; the panel
         // hides done tasks on the next refresh and the periodic reset
         // brings them back. Nothing is deleted here — dailies repeat
@@ -191,21 +307,56 @@ GoalsActions make_goals_actions() {
         refresh_goals_panel();
     };
     actions.set_completed = [](const std::string& id, bool completed) {
+        if (TaskPreset* preset = find_preset(g_preset_state.active_list)) {
+            g_preset_state.lists[preset->id]
+                .completed[preset_task_name(*preset, id)] = completed;
+            persist_preset_state();
+            refresh_goals_panel();
+            return;
+        }
         g_state.tasks.set_completed(id, completed);
         persist_state();
         refresh_goals_panel();
     };
     actions.add_task = [](TaskType type, const std::string& name, int goal) {
+        if (preset_active()) return; // fixed template: nothing to add
         g_state.tasks.add(type, name, goal);
         persist_state();
         refresh_goals_panel();
     };
     actions.remove_task = [](const std::string& id) {
+        if (preset_active()) return; // fixed template: nothing to remove
         g_state.tasks.remove(id);
         persist_state();
         refresh_goals_panel();
     };
     actions.move_task = [](const std::string& id, int delta) {
+        if (TaskPreset* preset = find_preset(g_preset_state.active_list)) {
+            // Reorder the display-order override with the same slide
+            // semantics as TaskList::move (neighbors keep their order).
+            PresetListProgress& progress = g_preset_state.lists[preset->id];
+            std::vector<std::string> order;
+            for (const Task& task : g_active_tasks.all())
+                order.push_back(task.name);
+            const std::string name = preset_task_name(*preset, id);
+            const auto it = std::find(order.begin(), order.end(), name);
+            if (it == order.end()) return;
+            const std::ptrdiff_t index = std::distance(order.begin(), it);
+            const std::ptrdiff_t last =
+                static_cast<std::ptrdiff_t>(order.size()) - 1;
+            const std::ptrdiff_t target =
+                std::clamp(index + static_cast<std::ptrdiff_t>(delta),
+                           std::ptrdiff_t{0}, last);
+            if (target == index) return;
+            if (target < index)
+                std::rotate(order.begin() + target, it, it + 1);
+            else
+                std::rotate(it, it + 1, order.begin() + target + 1);
+            progress.order = std::move(order);
+            persist_preset_state();
+            refresh_goals_panel();
+            return;
+        }
         g_state.tasks.move(id, delta);
         persist_state();
         refresh_goals_panel();
@@ -245,6 +396,32 @@ void save_dragged_placement(const char* section, int margin_x, int margin_y) {
     }
 }
 
+// Panel switcher: index 0 is "custom", everything after maps 1:1 to
+// g_presets. Persisting is what makes the choice survive restarts.
+void on_list_selected(GObject* dropdown, GParamSpec*, gpointer) {
+    const guint index = gtk_drop_down_get_selected(GTK_DROP_DOWN(dropdown));
+    std::string id = "custom";
+    if (index > 0 && index - 1 < g_presets.size())
+        id = g_presets[index - 1].id;
+    if (id == g_preset_state.active_list) return;
+    g_preset_state.active_list = id;
+    persist_preset_state();
+    refresh_goals_panel();
+}
+
+// Header display toggles: flip the config field optimistically (so
+// the rebuild is instant), persist to the TOML, and let the config
+// monitor's reload arrive to the same values — idempotent by design.
+void flip_panel_toggle(const char* key, bool* field) {
+    *field = !*field;
+    try {
+        set_config_value(kConfigPath, key, *field);
+    } catch (const std::exception& error) {
+        g_warning("could not write %s: %s", key, error.what());
+    }
+    refresh_goals_panel();
+}
+
 // Builds the whole goals panel surface from the current config:
 // window, rows box, add-task form, footer buttons. Called at
 // startup and whenever a live reload turns [panel] visible on.
@@ -265,6 +442,57 @@ void build_goals_panel(GtkApplication* app) {
     // own box so rebuilds never touch the form or its toggle.
     g_goals_panel = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
     gtk_widget_add_css_class(g_goals_panel, "goals-panel");
+
+    // Header row: preset switcher (when presets exist) and the two
+    // display toggles — short/full names and collapsed view.
+    auto* header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+
+    // Preset list switcher: "Custom" is the free-form list from
+    // state.json; every other entry is a fixed template from
+    // data/task_lists.json. Only built when presets are installed.
+    if (!g_presets.empty()) {
+        std::vector<const char*> names {"Custom"};
+        for (const TaskPreset& preset : g_presets)
+            names.push_back(preset.name.c_str()); // g_presets outlives the panel
+        names.push_back(nullptr);
+        g_list_dropdown = gtk_drop_down_new(
+            G_LIST_MODEL(gtk_string_list_new(names.data())), nullptr);
+        gtk_widget_add_css_class(g_list_dropdown, "goal-list-switch");
+        gtk_widget_set_hexpand(g_list_dropdown, TRUE);
+        guint selected = 0;
+        for (std::size_t i = 0; i < g_presets.size(); ++i)
+            if (g_presets[i].id == g_preset_state.active_list)
+                selected = static_cast<guint>(i + 1);
+        gtk_drop_down_set_selected(GTK_DROP_DOWN(g_list_dropdown), selected);
+        g_signal_connect(g_list_dropdown, "notify::selected",
+                         G_CALLBACK(on_list_selected), nullptr);
+        gtk_box_append(GTK_BOX(header), g_list_dropdown);
+    }
+
+    auto* names_button = gtk_button_new_with_label("Aa");
+    gtk_widget_add_css_class(names_button, "goal-bump");
+    gtk_widget_set_tooltip_text(names_button,
+                                "Toggle short codes / full names");
+    g_signal_connect(names_button, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer) {
+                         flip_panel_toggle("panel.short_names",
+                                           &g_config.panel.short_names);
+                     }), nullptr);
+    gtk_box_append(GTK_BOX(header), names_button);
+
+    auto* collapse_button = gtk_button_new_with_label("▾");
+    gtk_widget_add_css_class(collapse_button, "goal-bump");
+    gtk_widget_set_tooltip_text(collapse_button,
+                                "Show only the first 3 tasks / show all");
+    g_signal_connect(collapse_button, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer) {
+                         flip_panel_toggle("panel.collapsed",
+                                           &g_config.panel.collapsed);
+                     }), nullptr);
+    gtk_box_append(GTK_BOX(header), collapse_button);
+
+    gtk_box_append(GTK_BOX(g_goals_panel), header);
+
     g_goals_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
     gtk_box_append(GTK_BOX(g_goals_panel), g_goals_box);
 
@@ -273,6 +501,7 @@ void build_goals_panel(GtkApplication* app) {
     auto* footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
 
     auto* add_task_button = gtk_button_new_with_label("＋ Add task");
+    g_add_task_button = add_task_button; // refresh hides it for presets
     gtk_widget_add_css_class(add_task_button, "goal-add-toggle");
     gtk_widget_set_hexpand(add_task_button, TRUE);
     gtk_widget_set_halign(add_task_button, GTK_ALIGN_FILL);
@@ -303,7 +532,10 @@ void build_goals_panel(GtkApplication* app) {
                                       placement_from(g_config.panel));
 
     // Initial fill; row visibility is refresh_goals_panel()'s job.
-    g_goals_signature = goals_signature(g_state);
+    materialize_active_tasks();
+    g_goals_signature = goals_signature(g_active_tasks,
+                                        g_config.panel.short_names,
+                                        g_config.panel.collapsed);
     refresh_goals_panel();
     gtk_window_present(g_panel_window);
 }
@@ -530,7 +762,8 @@ void on_pointer_click(int x, int y, bool ctrl) {
                       g_config.dgcheck.y + g_config.dgcheck.height);
         return; // a normal game click, outside the zone
     }
-    const std::string id = dgcheck::target_task_id(g_state.tasks);
+    materialize_active_tasks();
+    const std::string id = dgcheck::target_task_id(g_active_tasks);
     if (id.empty()) {
         g_message("dgcheck: click in zone but no task tracked");
         return;
@@ -566,6 +799,10 @@ gboolean on_tick(gpointer label_ptr) {
         g_message("server reset detected, tasks cleared");
         persist_state();
     }
+    if (apply_preset_resets(g_preset_state, g_presets, now)) {
+        g_message("server reset detected, preset progress cleared");
+        persist_preset_state();
+    }
 
     // Warning-window alarms: fires a notification once per event
     // occurrence when it enters the configured warn-before window.
@@ -581,7 +818,10 @@ gboolean on_tick(gpointer label_ptr) {
     // The signature comparison is the React "key" idea: a cheap check
     // per second, a full rebuild only on mismatch.
     if (g_goals_box != nullptr) {
-        const std::string signature = goals_signature(g_state);
+        materialize_active_tasks();
+        const std::string signature =
+            goals_signature(g_active_tasks, g_config.panel.short_names,
+                            g_config.panel.collapsed);
         if (signature != g_goals_signature) {
             g_goals_signature = signature;
             refresh_goals_panel();
@@ -625,6 +865,11 @@ void apply_css() {
             margin-top: 4px;
         }
         .goal-section:first-child { margin-top: 0; }
+        .goal-more-hint {
+            font-family: monospace;
+            font-size: 11px;
+            color: alpha(#ffd24d, 0.45);
+        }
         .goal-name {
             font-family: monospace;
             font-size: 12px;
@@ -689,6 +934,27 @@ void apply_css() {
 
 void on_activate(GtkApplication* app, gpointer) {
     g_app = G_APPLICATION(app);
+
+    // Preset task lists: optional like the dungeon catalog — without
+    // them the panel switcher simply never appears.
+    try {
+        g_presets = load_task_presets(kTaskListsPath, g_dungeons);
+    } catch (const std::exception& error) {
+        g_warning("preset lists unavailable (%s)", error.what());
+    }
+    try {
+        g_presets_path = default_presets_path();
+        g_preset_state = load_preset_state(g_presets_path);
+        // A remembered active list that no longer exists in the file
+        // falls back to custom instead of showing nothing.
+        if (g_preset_state.active_list != "custom" &&
+            find_preset(g_preset_state.active_list) == nullptr)
+            g_preset_state.active_list = "custom";
+    } catch (const std::exception& error) {
+        g_warning("preset state unreadable (%s); starting fresh",
+                  error.what());
+    }
+
     apply_css();
     GtkWidget* window = gtk_application_window_new(app);
     g_window = GTK_WINDOW(window);
@@ -792,6 +1058,9 @@ void on_activate(GtkApplication* app, gpointer) {
     // Catch up on resets that happened while the app was closed.
     if (apply_resets(g_state, std::chrono::system_clock::now()))
         persist_state();
+    if (apply_preset_resets(g_preset_state, g_presets,
+                            std::chrono::system_clock::now()))
+        persist_preset_state();
 
     // Pointer sensor for the dgcheck counter. Started unconditionally
     // (it is a zero-privilege X11 client): whether clicks COUNT is the
