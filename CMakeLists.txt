@@ -48,7 +48,9 @@ pkg_check_modules(NLOHMANN REQUIRED IMPORTED_TARGET nlohmann_json)
 # the app logic know nothing about the host OS.
 set(APP_SOURCES
     src/main.cpp
+    src/app/active_tasks.cpp
     src/app/alarms.cpp
+    src/app/css.cpp
     src/app/dgcheck.cpp
     src/app/update_check.cpp
     src/time/clock.cpp
@@ -59,6 +61,7 @@ set(APP_SOURCES
     src/model/task_presets.cpp
     src/model/tasks.cpp
     src/ui/goals_panel.cpp
+    src/ui/panel_surface.cpp
     src/ui/settings_window.cpp
     src/ui/tutorial.cpp
 )

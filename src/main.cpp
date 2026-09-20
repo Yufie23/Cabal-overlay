@@ -41,7 +41,9 @@
 
 #include <gtk/gtk.h>
 
+#include "app/active_tasks.h"
 #include "app/alarms.h"
+#include "app/css.h"
 #include "app/dgcheck.h"
 #include "app/update_check.h"
 #include "time/clock.h"
@@ -58,6 +60,7 @@
 #include "model/task_presets.h"
 #include "model/tasks.h"
 #include "ui/goals_panel.h"
+#include "ui/panel_surface.h"
 #include "ui/settings_window.h"
 #include "ui/tutorial.h"
 
@@ -102,16 +105,9 @@ constexpr const char* kTaskListsPath = "data/task_lists.json";
 // file monitor — all owned by the single GtkApplication instance.
 // GLib is single-threaded like Node: callbacks (timer, monitor,
 // signals) never run concurrently, so no locks are needed.
+// The clock bar's window lives here; the goals panel's widgets are
+// owned by ui/panel_surface (accessed through its functions).
 GtkWindow*    g_window = nullptr;
-// Second surface: the goals panel. Created when [panel] visible=true.
-// Three layers, top to bottom: g_goals_box (task rows, rebuilt on
-// every change), the "add task" toggle button, and the form itself
-// — the last two live OUTSIDE the rebuildable box so an open form
-// survives row refreshes.
-GtkWindow*    g_panel_window = nullptr;
-GtkWidget*    g_goals_panel = nullptr;  // styled outer box
-GtkWidget*    g_goals_box = nullptr;    // rebuilt task rows
-GtkWidget*    g_goals_form = nullptr;   // collapsible add-task form
 GoalsActions  g_actions;
 bool          g_interactive = false;
 AppConfig     g_config;
@@ -130,8 +126,6 @@ std::filesystem::path g_presets_path;
 // storage — only its contents are rebuilt per refresh — because panel
 // callbacks and the dgcheck counter hold pointers into it.
 TaskList      g_active_tasks;
-GtkWidget*    g_list_dropdown = nullptr;   // preset switcher (panel header)
-GtkWidget*    g_add_task_button = nullptr; // hidden while a preset is active
 // Remembers which event occurrences already got their warning.
 AlarmTracker  g_alarms;
 // The GtkApplication, kept for sending GNotifications from the
@@ -216,66 +210,18 @@ void mark_tutorial_seen() {
 // ── Preset lists ───────────────────────────────────────────────
 // The panel shows ONE source at a time: "custom" (g_state.tasks, the
 // classic free-form list) or a preset template from
-// data/task_lists.json. Actions route by the active source so the
-// view layer never learns the difference.
-
-const TaskPreset* find_preset(const std::string& id) {
-    for (const TaskPreset& preset : g_presets)
-        if (preset.id == id) return &preset;
-    return nullptr;
-}
+// data/task_lists.json. The pure logic lives in app/active_tasks;
+// these wrappers just bind it to this app's globals.
 
 bool preset_active() {
-    return find_preset(g_preset_state.active_list) != nullptr;
+    return find_preset(g_presets, g_preset_state.active_list) != nullptr;
 }
 
-// Preset row ids are "p:<list id>:<task name>" — stable across
-// refreshes so progress, ghosts and drag-and-drop all resolve.
-std::string preset_task_name(const TaskPreset& preset,
-                             const std::string& id) {
-    const std::string prefix = "p:" + preset.id + ":";
-    if (id.starts_with(prefix)) return id.substr(prefix.size());
-    return id;
-}
-
-// Rebuilds g_active_tasks from the active source: a copy of the
-// custom list, or the preset definition plus the user's progress and
-// order override. Template edits are tolerated both ways: names the
-// override does not know are appended, names the template dropped
-// are skipped.
+// Rebuilds g_active_tasks from the active source (see
+// app/active_tasks.h for the rules).
 void materialize_active_tasks() {
-    const TaskPreset* preset = find_preset(g_preset_state.active_list);
-    if (preset == nullptr) {
-        g_active_tasks = g_state.tasks;
-        return;
-    }
-
-    TaskList list;
-    PresetListProgress& progress = g_preset_state.lists[preset->id];
-    std::vector<std::string> order = progress.order;
-    for (const PresetTask& task : preset->tasks)
-        if (std::ranges::find(order, task.name) == order.end())
-            order.push_back(task.name);
-
-    for (const std::string& name : order) {
-        const PresetTask* def = nullptr;
-        for (const PresetTask& task : preset->tasks)
-            if (task.name == name) { def = &task; break; }
-        if (def == nullptr) continue; // removed from the template since
-
-        Task task;
-        task.id = "p:" + preset->id + ":" + def->name;
-        task.type = def->type;
-        task.name = def->name;
-        task.goal = def->goal;
-        task.locked = true; // template content: no remove button
-        if (auto it = progress.counts.find(name); it != progress.counts.end())
-            task.count = it->second;
-        if (auto it = progress.completed.find(name); it != progress.completed.end())
-            task.completed = it->second;
-        list.all().push_back(std::move(task));
-    }
-    g_active_tasks = std::move(list);
+    g_active_tasks =
+        materialize_active_tasks(g_presets, g_preset_state, g_state.tasks);
 }
 
 // Rebuilds the task rows and syncs panel visibility. The single
@@ -283,23 +229,27 @@ void materialize_active_tasks() {
 // stay consistent. An open add-task form keeps the panel on screen
 // even with zero tasks.
 void refresh_goals_panel() {
-    if (g_goals_box == nullptr || g_panel_window == nullptr) return;
+    if (!panel_surface::exists()) return;
     materialize_active_tasks();
-    goals_panel_refresh(g_goals_box, g_active_tasks, g_actions, g_dungeons,
-                        g_config.panel.short_names, g_config.panel.collapsed);
+    goals_panel_refresh(panel_surface::goals_box(), g_active_tasks,
+                        g_actions, g_dungeons, g_config.panel.short_names,
+                        g_config.panel.collapsed);
     // Preset lists are fixed templates: adding is meaningless there.
     const bool preset = preset_active();
-    if (g_add_task_button != nullptr)
-        gtk_widget_set_visible(g_add_task_button, preset ? FALSE : TRUE);
-    if (preset && g_goals_form != nullptr)
-        gtk_widget_set_visible(g_goals_form, FALSE);
-    const bool visible = !g_active_tasks.all().empty() ||
-                         gtk_widget_get_visible(g_goals_form) == TRUE;
-    gtk_widget_set_visible(GTK_WIDGET(g_panel_window),
+    if (panel_surface::add_task_button() != nullptr)
+        gtk_widget_set_visible(panel_surface::add_task_button(),
+                               preset ? FALSE : TRUE);
+    if (preset && panel_surface::goals_form() != nullptr)
+        gtk_widget_set_visible(panel_surface::goals_form(), FALSE);
+    const bool visible =
+        !g_active_tasks.all().empty() ||
+        gtk_widget_get_visible(panel_surface::goals_form()) == TRUE;
+    gtk_widget_set_visible(GTK_WIDGET(panel_surface::window()),
                            visible ? TRUE : FALSE);
     // A surface that comes back from hidden is clickable by
     // default — re-assert click-through on the panel.
-    platform::overlay_set_interactive(g_panel_window, g_interactive);
+    platform::overlay_set_interactive(panel_surface::window(),
+                                      g_interactive);
 }
 
 // The actions the panel calls when the user touches it. Each one
@@ -308,7 +258,7 @@ void refresh_goals_panel() {
 GoalsActions make_goals_actions() {
     GoalsActions actions;
     actions.bump_count = [](const std::string& id, int delta) {
-        if (const TaskPreset* preset = find_preset(g_preset_state.active_list)) {
+        if (const TaskPreset* preset = find_preset(g_presets, g_preset_state.active_list)) {
             // Mirror of TaskList::bump_count on the preset's progress:
             // clamp to [0, goal], auto-complete when the goal is met.
             PresetListProgress& progress = g_preset_state.lists[preset->id];
@@ -335,7 +285,7 @@ GoalsActions make_goals_actions() {
         refresh_goals_panel();
     };
     actions.set_completed = [](const std::string& id, bool completed) {
-        if (const TaskPreset* preset = find_preset(g_preset_state.active_list)) {
+        if (const TaskPreset* preset = find_preset(g_presets, g_preset_state.active_list)) {
             g_preset_state.lists[preset->id]
                 .completed[preset_task_name(*preset, id)] = completed;
             persist_preset_state();
@@ -359,7 +309,7 @@ GoalsActions make_goals_actions() {
         refresh_goals_panel();
     };
     actions.move_task = [](const std::string& id, int delta) {
-        if (const TaskPreset* preset = find_preset(g_preset_state.active_list)) {
+        if (const TaskPreset* preset = find_preset(g_presets, g_preset_state.active_list)) {
             // Reorder the display-order override with the same slide
             // semantics as TaskList::move (neighbors keep their order).
             PresetListProgress& progress = g_preset_state.lists[preset->id];
@@ -424,19 +374,6 @@ void save_dragged_placement(const char* section, int margin_x, int margin_y) {
     }
 }
 
-// Panel switcher: index 0 is "custom", everything after maps 1:1 to
-// g_presets. Persisting is what makes the choice survive restarts.
-void on_list_selected(GObject* dropdown, GParamSpec*, gpointer) {
-    const guint index = gtk_drop_down_get_selected(GTK_DROP_DOWN(dropdown));
-    std::string id = "custom";
-    if (index > 0 && index - 1 < g_presets.size())
-        id = g_presets[index - 1].id;
-    if (id == g_preset_state.active_list) return;
-    g_preset_state.active_list = id;
-    persist_preset_state();
-    refresh_goals_panel();
-}
-
 // Header display toggles: flip the config field optimistically (so
 // the rebuild is instant), persist to the TOML, and let the config
 // monitor's reload arrive to the same values — idempotent by design.
@@ -450,147 +387,56 @@ void flip_panel_toggle(const char* key, bool* field) {
     refresh_goals_panel();
 }
 
-// Builds the whole goals panel surface from the current config:
-// window, rows box, add-task form, footer buttons. Called at
-// startup and whenever a live reload turns [panel] visible on.
-void build_goals_panel(GtkApplication* app) {
-    GtkWidget* panel_window = gtk_application_window_new(app);
-    g_panel_window = GTK_WINDOW(panel_window);
-    platform::overlay_init(g_panel_window);
-    // Drag-to-move like the clock bar; a tap on the panel does
-    // nothing (unlike the bar, it is not a "done" button).
-    platform::overlay_enable_drag(
-        g_panel_window,
-        [](int margin_x, int margin_y) {
-            save_dragged_placement("panel", margin_x, margin_y);
-        },
-        [] {});
-
-    // Outer styled box; inside it, the task rows live in their
-    // own box so rebuilds never touch the form or its toggle.
-    g_goals_panel = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-    gtk_widget_add_css_class(g_goals_panel, "goals-panel");
-
-    // Header row: preset switcher (when presets exist) and the two
-    // display toggles — short/full names and collapsed view.
-    auto* header = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-
-    // Preset list switcher: "Custom" is the free-form list from
-    // state.json; every other entry is a fixed template from
-    // data/task_lists.json. Only built when presets are installed.
-    if (!g_presets.empty()) {
-        std::vector<const char*> names {"Custom"};
-        for (const TaskPreset& preset : g_presets)
-            names.push_back(preset.name.c_str()); // g_presets outlives the panel
-        names.push_back(nullptr);
-        g_list_dropdown = gtk_drop_down_new(
-            G_LIST_MODEL(gtk_string_list_new(names.data())), nullptr);
-        gtk_widget_add_css_class(g_list_dropdown, "goal-list-switch");
-        gtk_widget_set_hexpand(g_list_dropdown, TRUE);
-        guint selected = 0;
-        for (std::size_t i = 0; i < g_presets.size(); ++i)
-            if (g_presets[i].id == g_preset_state.active_list)
-                selected = static_cast<guint>(i + 1);
-        gtk_drop_down_set_selected(GTK_DROP_DOWN(g_list_dropdown), selected);
-        g_signal_connect(g_list_dropdown, "notify::selected",
-                         G_CALLBACK(on_list_selected), nullptr);
-        gtk_box_append(GTK_BOX(header), g_list_dropdown);
-    }
-
-    auto* names_button = gtk_button_new_with_label("Aa");
-    gtk_widget_add_css_class(names_button, "goal-bump");
-    gtk_widget_set_tooltip_text(names_button,
-                                "Toggle short codes / full names");
-    g_signal_connect(names_button, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer) {
-                         flip_panel_toggle("panel.short_names",
-                                           &g_config.panel.short_names);
-                     }), nullptr);
-    gtk_box_append(GTK_BOX(header), names_button);
-
-    auto* collapse_button = gtk_button_new_with_label("▾");
-    gtk_widget_add_css_class(collapse_button, "goal-bump");
-    gtk_widget_set_tooltip_text(collapse_button,
-                                "Show only the first 3 tasks / show all");
-    g_signal_connect(collapse_button, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer) {
-                         flip_panel_toggle("panel.collapsed",
-                                           &g_config.panel.collapsed);
-                     }), nullptr);
-    gtk_box_append(GTK_BOX(header), collapse_button);
-
-    gtk_box_append(GTK_BOX(g_goals_panel), header);
-
-    g_goals_box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 8);
-    gtk_box_append(GTK_BOX(g_goals_panel), g_goals_box);
-
-    g_goals_form = goals_add_form_new(g_actions, g_dungeons);
-
-    auto* footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-
-    auto* add_task_button = gtk_button_new_with_label("＋ Add task");
-    g_add_task_button = add_task_button; // refresh hides it for presets
-    gtk_widget_add_css_class(add_task_button, "goal-add-toggle");
-    gtk_widget_set_hexpand(add_task_button, TRUE);
-    gtk_widget_set_halign(add_task_button, GTK_ALIGN_FILL);
-    // Capture-less lambda → plain function pointer, so it can
-    // serve as a GTK callback. Reads the global form; no state
-    // of its own.
-    g_signal_connect(add_task_button, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer) {
-                         gtk_widget_set_visible(g_goals_form, TRUE);
-                     }), nullptr);
-
-    auto* settings_button = gtk_button_new_with_label("⚙");
-    gtk_widget_add_css_class(settings_button, "goal-bump");
-    gtk_widget_set_tooltip_text(settings_button, "Open settings");
-    g_signal_connect(settings_button, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer) {
-                         settings::present(GTK_APPLICATION(g_app),
-                                           g_config, kConfigPath);
-                     }), nullptr);
-
-    auto* help_button = gtk_button_new_with_label("?");
-    gtk_widget_add_css_class(help_button, "goal-bump");
-    gtk_widget_set_tooltip_text(help_button, "Quick tour (tutorial)");
-    g_signal_connect(help_button, "clicked",
-                     G_CALLBACK(+[](GtkButton*, gpointer) {
-                         tutorial::present(GTK_APPLICATION(g_app),
-                                           [] { mark_tutorial_seen(); });
-                     }), nullptr);
-
-    gtk_box_append(GTK_BOX(footer), add_task_button);
-    gtk_box_append(GTK_BOX(footer), settings_button);
-    gtk_box_append(GTK_BOX(footer), help_button);
-    gtk_box_append(GTK_BOX(g_goals_panel), footer);
-    gtk_box_append(GTK_BOX(g_goals_panel), g_goals_form);
-
-    gtk_window_set_child(g_panel_window, g_goals_panel);
-    platform::overlay_apply_placement(g_panel_window,
-                                      placement_from(g_config.panel));
-
-    // Initial fill; row visibility is refresh_goals_panel()'s job.
-    materialize_active_tasks();
-    g_goals_signature = goals_signature(g_active_tasks,
-                                        g_config.panel.short_names,
-                                        g_config.panel.collapsed);
-    refresh_goals_panel();
-    gtk_window_present(g_panel_window);
+// Everything the panel surface needs from the app, gathered in one
+// place (see ui/panel_surface.h for the contract). Lambdas close
+// over this file's globals — the surface never includes them.
+panel_surface::PanelCallbacks make_panel_callbacks() {
+    return panel_surface::PanelCallbacks{
+        .actions = g_actions,
+        .dungeons = &g_dungeons,
+        .presets = &g_presets,
+        .active_list = &g_preset_state.active_list,
+        .initial_placement = placement_from(g_config.panel),
+        .on_list_selected =
+            [](const std::string& id) {
+                g_preset_state.active_list = id;
+                persist_preset_state();
+                refresh_goals_panel();
+            },
+        .on_names_toggled =
+            [] { flip_panel_toggle("panel.short_names",
+                                   &g_config.panel.short_names); },
+        .on_collapse_toggled =
+            [] { flip_panel_toggle("panel.collapsed",
+                                   &g_config.panel.collapsed); },
+        .on_open_settings =
+            [] { settings::present(GTK_APPLICATION(g_app), g_config,
+                                   kConfigPath); },
+        .on_open_tutorial =
+            [] { tutorial::present(GTK_APPLICATION(g_app),
+                                   [] { mark_tutorial_seen(); }); },
+        .on_dragged =
+            [](int margin_x, int margin_y) {
+                save_dragged_placement("panel", margin_x, margin_y);
+            },
+    };
 }
 
 // Brings the panel surface in line with [panel] visible: builds it
 // when the config enables the panel and it does not exist yet, and
-// destroys it when the config disables it. Every consumer of these
-// globals already nullptr-checks, so tearing the window down is safe.
+// destroys it when the config disables it. The surface's accessors
+// all nullptr-check, so tearing the window down is safe.
 void sync_goals_panel(GtkApplication* app) {
-    if (g_config.panel.visible && g_panel_window == nullptr) {
-        build_goals_panel(app);
-    } else if (!g_config.panel.visible && g_panel_window != nullptr) {
-        gtk_window_destroy(g_panel_window);
-        g_panel_window = nullptr;
-        g_goals_panel = nullptr;
-        g_goals_box = nullptr;
-        g_goals_form = nullptr;
+    if (g_config.panel.visible && !panel_surface::exists()) {
+        panel_surface::build(app, make_panel_callbacks());
+        // Initial fill; row visibility is refresh_goals_panel()'s job.
+        materialize_active_tasks();
+        g_goals_signature = goals_signature(g_active_tasks,
+                                            g_config.panel.short_names,
+                                            g_config.panel.collapsed);
+        refresh_goals_panel();
+    } else if (!g_config.panel.visible && panel_surface::exists()) {
+        panel_surface::destroy();
     }
 }
 
@@ -634,11 +480,12 @@ void reload_config() {
         // Create/destroy the panel surface as [panel] visible demands;
         // a just-built panel already got its placement in build().
         sync_goals_panel(gtk_window_get_application(g_window));
-        if (g_panel_window != nullptr) {
+        if (panel_surface::exists()) {
             const auto panel = placement_from(g_config.panel);
             persist_adjusted_margins(
                 "panel", panel,
-                platform::overlay_apply_placement(g_panel_window, panel));
+                platform::overlay_apply_placement(panel_surface::window(),
+                                                  panel));
         }
         g_message("config reloaded from %s", kConfigPath.c_str());
         sync_game_watch();
@@ -671,8 +518,8 @@ void apply_overlay_visibility() {
     const bool visible =
         !g_game_watch_active || g_game_focused || g_interactive;
     gtk_widget_set_visible(GTK_WIDGET(g_window), visible ? TRUE : FALSE);
-    if (g_panel_window != nullptr)
-        gtk_widget_set_visible(GTK_WIDGET(g_panel_window),
+    if (panel_surface::exists())
+        gtk_widget_set_visible(GTK_WIDGET(panel_surface::window()),
                                visible ? TRUE : FALSE);
 }
 
@@ -705,8 +552,8 @@ void set_interactive(bool enabled) {
     g_message("interactive mode: %s",
               enabled ? "ON (overlay clickable)" : "OFF (click-through)");
     platform::overlay_set_interactive(g_window, enabled);
-    if (g_panel_window != nullptr)
-        platform::overlay_set_interactive(g_panel_window, enabled);
+    if (panel_surface::exists())
+        platform::overlay_set_interactive(panel_surface::window(), enabled);
     // Leaving interactive mode re-exposes the focus rule: if the
     // game is not focused, the overlay hides now.
     apply_overlay_visibility();
@@ -865,7 +712,7 @@ gboolean on_tick(gpointer label_ptr) {
     // the last render (new task, counter bump, reset wiped the list).
     // The signature comparison is the React "key" idea: a cheap check
     // per second, a full rebuild only on mismatch.
-    if (g_goals_box != nullptr) {
+    if (panel_surface::exists()) {
         materialize_active_tasks();
         const std::string signature =
             goals_signature(g_active_tasks, g_config.panel.short_names,
@@ -878,120 +725,16 @@ gboolean on_tick(gpointer label_ptr) {
     return G_SOURCE_CONTINUE;
 }
 
+
 // Handled by the drag gesture's tap detection (overlay_enable_drag):
 // a press-and-release without movement on the bar means "I'm done" —
 // hand the mouse back to the game. Dragging the bar moves it instead.
 
-// GTK styling works with CSS, same idea as the web tracker but
-// applied to native widgets instead of DOM elements.
-void apply_css() {
-    auto* provider = gtk_css_provider_new();
-    gtk_css_provider_load_from_string(provider, R"css(
-        window { background-color: transparent; }
-        .overlay-bar {
-            background-color: alpha(black, 0.5);
-            color: #ffd24d;
-            font-family: monospace;
-            font-size: 14px;
-            padding: 6px 14px;
-            border-radius: 8px;
-            border: 1px solid alpha(#ffd24d, 0.4);
-        }
-        .goals-panel {
-            background-color: alpha(black, 0.5);
-            color: #ffd24d;
-            padding: 10px 12px;
-            border-radius: 8px;
-            border: 1px solid alpha(#ffd24d, 0.4);
-            min-width: 240px;
-        }
-        .goal-section {
-            font-family: monospace;
-            font-size: 11px;
-            font-weight: bold;
-            color: alpha(#ffd24d, 0.75);
-            margin-top: 4px;
-        }
-        .goal-section:first-child { margin-top: 0; }
-        .goal-more-hint {
-            font-family: monospace;
-            font-size: 11px;
-            color: alpha(#ffd24d, 0.45);
-        }
-        .tutorial-title {
-            font-size: 16px;
-            font-weight: bold;
-        }
-        .tutorial-body {
-            font-size: 13px;
-        }
-        .goal-name {
-            font-family: monospace;
-            font-size: 12px;
-        }
-        .goal-count {
-            font-family: monospace;
-            font-size: 12px;
-            color: white;
-        }
-        .goals-panel progressbar trough {
-            background-color: alpha(white, 0.15);
-            border-radius: 3px;
-            min-height: 6px;
-        }
-        .goals-panel progressbar progress {
-            background-color: #ffd24d;
-            border-radius: 3px;
-            min-height: 6px;
-        }
-        .goal-bump {
-            font-family: monospace;
-            font-size: 11px;
-            padding: 0 8px;
-            min-height: 18px;
-            background-color: alpha(white, 0.08);
-            color: #ffd24d;
-            border-radius: 4px;
-        }
-        .goal-bump:hover { background-color: alpha(#ffd24d, 0.25); }
-        .goal-add-toggle {
-            font-family: monospace;
-            font-size: 11px;
-            padding: 2px 8px;
-            background-color: alpha(#ffd24d, 0.12);
-            color: #ffd24d;
-            border-radius: 4px;
-        }
-        .goal-add-toggle:hover { background-color: alpha(#ffd24d, 0.25); }
-        .goal-form { border-top: 1px solid alpha(#ffd24d, 0.25); padding-top: 6px; }
-        .goal-form-title {
-            font-family: monospace;
-            font-size: 11px;
-            font-weight: bold;
-            color: alpha(#ffd24d, 0.75);
-        }
-        .goal-form-entry, .goal-form-spin, .goal-form-add, .goal-form button {
-            font-family: monospace;
-            font-size: 12px;
-        }
-        .goal-form-add {
-            background-color: alpha(#ffd24d, 0.25);
-            color: #ffd24d;
-            border-radius: 4px;
-        }
-    )css");
-    gtk_style_context_add_provider_for_display(
-        gdk_display_get_default(),
-        GTK_STYLE_PROVIDER(provider),
-        GTK_STYLE_PROVIDER_PRIORITY_APPLICATION);
-    g_object_unref(provider); // The display keeps its own reference now.
-}
 
-void on_activate(GtkApplication* app, gpointer) {
-    g_app = G_APPLICATION(app);
-
-    // Preset task lists: optional like the dungeon catalog — without
-    // them the panel switcher simply never appears.
+// Preset task lists: optional like the dungeon catalog — without
+// them the panel switcher simply never appears. Loaded here (once,
+// at activation) because every consumer reads the globals.
+void load_preset_data() {
     try {
         g_presets = load_task_presets(kTaskListsPath, g_dungeons);
     } catch (const std::exception& error) {
@@ -1003,14 +746,18 @@ void on_activate(GtkApplication* app, gpointer) {
         // A remembered active list that no longer exists in the file
         // falls back to custom instead of showing nothing.
         if (g_preset_state.active_list != "custom" &&
-            find_preset(g_preset_state.active_list) == nullptr)
+            find_preset(g_presets, g_preset_state.active_list) == nullptr)
             g_preset_state.active_list = "custom";
     } catch (const std::exception& error) {
         g_warning("preset state unreadable (%s); starting fresh",
                   error.what());
     }
+}
 
-    apply_css();
+// Builds the clock-bar surface: window, placement, config monitor,
+// label, drag-to-move. The bar is also the "tap to go back to
+// click-through" button. Returns the label (the tick refreshes it).
+GtkWidget* build_bar_window(GtkApplication* app) {
     GtkWidget* window = gtk_application_window_new(app);
     g_window = GTK_WINDOW(window);
 
@@ -1046,15 +793,24 @@ void on_activate(GtkApplication* app, gpointer) {
         },
         [] { set_interactive(false); });
 
-    // Second surface: the goals panel, anchored to one vertical edge
-    // only, which makes the compositor center it. Same three platform
-    // calls as the bar — this file never learns what layer-shell is.
-    sync_goals_panel(app);
-
     gtk_window_present(GTK_WINDOW(window));
 
     // Start in click-through mode: the game keeps the mouse.
     set_interactive(false);
+    return bar;
+}
+
+void on_activate(GtkApplication* app, gpointer) {
+    g_app = G_APPLICATION(app);
+
+    load_preset_data();
+    css::apply();
+    GtkWidget* bar = build_bar_window(app);
+
+    // Second surface: the goals panel, anchored to one vertical edge
+    // only, which makes the compositor center it. Same three platform
+    // calls as the bar — this file never learns what layer-shell is.
+    sync_goals_panel(app);
 
     // Hide both surfaces whenever the game is not the focused
     // window. The initial synchronous sweep inside game_watch_start
