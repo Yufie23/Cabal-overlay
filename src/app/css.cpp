@@ -13,7 +13,7 @@ namespace css {
 void apply() {
     auto* provider = gtk_css_provider_new();
     gtk_css_provider_load_from_string(provider, R"css(
-        window { background-color: transparent; }
+        window.overlay-window { background-color: transparent; }
         .overlay-bar {
             background-color: alpha(black, 0.5);
             color: #ffd24d;
@@ -47,6 +47,14 @@ void apply() {
         .tutorial-title {
             font-size: 16px;
             font-weight: bold;
+        }
+        .tutorial-combo {
+            font-family: monospace;
+            font-size: 24px;
+            font-weight: bold;
+            color: #ffd24d;
+            margin-top: 4px;
+            margin-bottom: 4px;
         }
         .tutorial-body {
             font-size: 13px;

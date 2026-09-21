@@ -124,7 +124,7 @@ cabal-overlay
      (built-in global hotkey) — it works on any compositor but reads the
      kernel input layer, the same permission a keylogger needs; the app
      records nothing, but use it only if you are comfortable with that.
-2. **DG Check zone**: open the overlay's settings (gear button), go to
+2. **DG Check zone**: open the overlay's settings (Settings button), go to
    the **DG Check** tab and click *Capture click zone…*, then click the
    center of the dungeon-clear dialog in game (click-through is
    suspended for that one click). After that, Ctrl+clicking that dialog

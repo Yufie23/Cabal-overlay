@@ -187,7 +187,7 @@ void persist_preset_state() {
 // A tiny versioned marker next to the state files: the wizard
 // auto-shows until the file exists with this version. Bump
 // kTutorialVersion when the tour changes enough to re-show.
-constexpr int kTutorialVersion = 1;
+constexpr int kTutorialVersion = 3;
 
 std::filesystem::path tutorial_flag_path() {
     return g_state_path.parent_path() / "tutorial.txt";
@@ -390,13 +390,14 @@ void flip_panel_toggle(const char* key, bool* field) {
 // Everything the panel surface needs from the app, gathered in one
 // place (see ui/panel_surface.h for the contract). Lambdas close
 // over this file's globals — the surface never includes them.
-panel_surface::PanelCallbacks make_panel_callbacks() {
+panel_surface::PanelCallbacks make_panel_callbacks(
+    const platform::Placement& placement) {
     return panel_surface::PanelCallbacks{
         .actions = g_actions,
         .dungeons = &g_dungeons,
         .presets = &g_presets,
         .active_list = &g_preset_state.active_list,
-        .initial_placement = placement_from(g_config.panel),
+        .initial_placement = placement,
         .on_list_selected =
             [](const std::string& id) {
                 g_preset_state.active_list = id;
@@ -426,9 +427,10 @@ panel_surface::PanelCallbacks make_panel_callbacks() {
 // when the config enables the panel and it does not exist yet, and
 // destroys it when the config disables it. The surface's accessors
 // all nullptr-check, so tearing the window down is safe.
-void sync_goals_panel(GtkApplication* app) {
+void sync_goals_panel(GtkApplication* app,
+                      const platform::Placement& placement) {
     if (g_config.panel.visible && !panel_surface::exists()) {
-        panel_surface::build(app, make_panel_callbacks());
+        panel_surface::build(app, make_panel_callbacks(placement));
         // Initial fill; row visibility is refresh_goals_panel()'s job.
         materialize_active_tasks();
         g_goals_signature = goals_signature(g_active_tasks,
@@ -479,7 +481,8 @@ void reload_config() {
             "overlay", bar, platform::overlay_apply_placement(g_window, bar));
         // Create/destroy the panel surface as [panel] visible demands;
         // a just-built panel already got its placement in build().
-        sync_goals_panel(gtk_window_get_application(g_window));
+        sync_goals_panel(gtk_window_get_application(g_window),
+                         placement_from(g_config.panel));
         if (panel_surface::exists()) {
             const auto panel = placement_from(g_config.panel);
             persist_adjusted_margins(
@@ -757,14 +760,18 @@ void load_preset_data() {
 // Builds the clock-bar surface: window, placement, config monitor,
 // label, drag-to-move. The bar is also the "tap to go back to
 // click-through" button. Returns the label (the tick refreshes it).
-GtkWidget* build_bar_window(GtkApplication* app) {
+GtkWidget* build_bar_window(GtkApplication* app,
+                            const platform::Placement& placement) {
     GtkWidget* window = gtk_application_window_new(app);
     g_window = GTK_WINDOW(window);
+    // Overlay surfaces float transparent; normal windows (settings,
+    // tutorial) keep the theme's solid background (see css.cpp).
+    gtk_widget_add_css_class(window, "overlay-window");
 
     // All Wayland-specific setup is two calls behind the platform
     // contract; this file does not know what layer-shell is.
     platform::overlay_init(g_window);
-    platform::overlay_apply_placement(g_window, placement_from(g_config.overlay));
+    platform::overlay_apply_placement(g_window, placement);
 
     // fs.watch, C edition: the overlay re-reads its config whenever
     // the TOML changes, so editing the file moves/restyles the bar
@@ -805,12 +812,28 @@ void on_activate(GtkApplication* app, gpointer) {
 
     load_preset_data();
     css::apply();
-    GtkWidget* bar = build_bar_window(app);
+
+    // First run (no tutorial flag yet): both surfaces open CENTERED
+    // horizontally and CLICKABLE — the panel at the top, the bar at
+    // the bottom — so a new user sees them immediately and can drag
+    // them into place while the quick tour explains the hotkey. The
+    // positions are not persisted: their own config applies from the
+    // next start (or the moment they drag, which saves a custom spot).
+    const bool first_run = !tutorial_seen();
+    const platform::Placement panel_first_run{
+        .anchor = "top", .margin_x = 0, .margin_y = 60,
+        .opacity = g_config.panel.opacity };
+    const platform::Placement bar_first_run{
+        .anchor = "bottom", .margin_x = 0, .margin_y = 60,
+        .opacity = g_config.overlay.opacity };
+    GtkWidget* bar = build_bar_window(
+        app, first_run ? bar_first_run : placement_from(g_config.overlay));
 
     // Second surface: the goals panel, anchored to one vertical edge
     // only, which makes the compositor center it. Same three platform
     // calls as the bar — this file never learns what layer-shell is.
-    sync_goals_panel(app);
+    sync_goals_panel(app, first_run ? panel_first_run
+                                    : placement_from(g_config.panel));
 
     // Hide both surfaces whenever the game is not the focused
     // window. The initial synchronous sweep inside game_watch_start
@@ -819,6 +842,7 @@ void on_activate(GtkApplication* app, gpointer) {
     // this single main-loop tick.
     sync_game_watch();
     apply_overlay_visibility();
+    if (first_run) set_interactive(true);
 
     // Global combo handling (see [hotkey] in the TOML and
     // docs/04-hotkey-modes.md). On Linux the default is External: the

@@ -84,7 +84,7 @@ GtkWidget* make_header() {
 GtkWidget* make_footer() {
     auto* footer = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
 
-    g_add_task_button = gtk_button_new_with_label("＋ Add task");
+    g_add_task_button = gtk_button_new_with_label("+ Add task");
     gtk_widget_add_css_class(g_add_task_button, "goal-add-toggle");
     gtk_widget_set_hexpand(g_add_task_button, TRUE);
     gtk_widget_set_halign(g_add_task_button, GTK_ALIGN_FILL);
@@ -95,7 +95,9 @@ GtkWidget* make_footer() {
                          gtk_widget_set_visible(g_goals_form, TRUE);
                      }), nullptr);
 
-    auto* settings_button = gtk_button_new_with_label("⚙");
+    // Text, not a glyph: "⚙" (U+2699) falls out of the Windows font
+    // fallback chain and renders as an empty box. Words always render.
+    auto* settings_button = gtk_button_new_with_label("Settings");
     gtk_widget_add_css_class(settings_button, "goal-bump");
     gtk_widget_set_tooltip_text(settings_button, "Open settings");
     g_signal_connect(settings_button, "clicked",
@@ -128,6 +130,7 @@ GtkWindow* build(GtkApplication* app, const PanelCallbacks& callbacks) {
 
     GtkWidget* panel_window = gtk_application_window_new(app);
     g_window = GTK_WINDOW(panel_window);
+    gtk_widget_add_css_class(panel_window, "overlay-window");
     platform::overlay_init(g_window);
     // Drag-to-move like the clock bar; a tap on the panel does
     // nothing (unlike the bar, it is not a "done" button).

@@ -12,34 +12,41 @@
 
 namespace {
 
-// Page texts live here, one pair per wizard page. Keep them short:
-// a tutorial nobody reads is worse than none.
+// Page texts live here, one entry per wizard page. Keep them short:
+// a tutorial nobody reads is worse than none. `combo` is optional:
+// when set it renders BIG — the one thing the user must remember.
 struct Page {
     const char* title;
     const char* body;
+    const char* combo = nullptr;
 };
 
-const std::array<Page, 5> kPages {{
+const std::array<Page, 6> kPages {{
     {
         .title = "Welcome to Cabal Overlay",
         .body =
         "Two floating surfaces sit on top of your game:\n\n"
         "  •  The BAR — clock and countdowns to game events.\n"
         "  •  The GOALS PANEL — your dungeon task list.\n\n"
+        "Right now they are CENTERED and CLICKABLE so you can drag "
+        "them wherever you want — repositioning is the first thing "
+        "worth doing.\n\n"
         "The overlay never touches the game: no injection, no memory "
         "reading, no input sent. It only draws on top and watches "
         "which window has focus.",
     },
     {
-        .title = "Click-through vs Interactive",
+        .title = "The ONE combo to remember",
         .body =
         "By default your clicks pass THROUGH to the game — the "
         "overlay is invisible to the mouse.\n\n"
-        "Press the hotkey (Shift+Space on Windows, or your desktop "
-        "shortcut on Linux) to make it clickable: drag the windows "
-        "to reposition them, open settings, edit tasks.\n\n"
-        "Press the combo again — or click the bar — to hand the "
-        "mouse back to the game.",
+        "Press the combo and it becomes CLICKABLE: drag windows, "
+        "edit tasks, open settings. Press it again — or click the "
+        "bar — and the mouse goes back to the game.\n\n"
+        "It works even while Cabal is fullscreen and focused.\n"
+        "(On Linux the combo is a desktop shortcut instead — see "
+        "the README for the one-time setup.)",
+        .combo = "Shift+Space",
     },
     {
         .title = "The goals panel",
@@ -48,9 +55,21 @@ const std::array<Page, 5> kPages {{
         "  •  − / + buttons count runs; the bar fills to the goal.\n"
         "  •  Done tasks fade out and come back on the daily reset.\n"
         "  •  Drag rows to reorder them.\n\n"
-        "In game, Ctrl+click the dungeon-clear dialog and the counter "
-        "moves by itself — calibrate that spot once in Settings → "
-        "DG Check.",
+        "Next page: how to make the counting automatic.",
+    },
+    {
+        .title = "DG Check — runs that count themselves",
+        .body =
+        "When a dungeon ends, Cabal shows the clear dialog you must "
+        "click. DG Check watches for THAT click — nothing is read "
+        "from the game's memory — and adds one run to your first "
+        "tracked task.\n\n"
+        "One-time setup: Settings → DG Check tab → enable it, press "
+        "\"Capture click zone…\", and click the dialog's button spot "
+        "once in game. From then on it just works.\n\n"
+        "By default only CTRL+click counts, so your normal game "
+        "clicks are always ignored.",
+        .combo = "Ctrl+Click",
     },
     {
         .title = "Lists and display",
@@ -64,8 +83,8 @@ const std::array<Page, 5> kPages {{
     {
         .title = "Settings, alarms and quitting",
         .body =
-        "The ⚙ button opens the settings: alarms, positions, hotkey, "
-        "DG Check zone. Everything applies live.\n\n"
+        "The Settings button opens the settings: alarms, positions, "
+        "hotkey, DG Check zone. Everything applies live.\n\n"
         "On Windows the overlay lives in the SYSTEM TRAY — "
         "right-click its icon for Settings or Quit.\n\n"
         "Alarms chime before scheduled events; event times (including "
@@ -142,6 +161,15 @@ GtkWidget* make_page(const Page& page) {
     gtk_widget_add_css_class(title, "tutorial-title");
     gtk_label_set_xalign(GTK_LABEL(title), 0.0);
     gtk_box_append(GTK_BOX(box), title);
+
+    // The combo, when the page has one, renders BIG — the single
+    // thing the user must not miss in the whole tour.
+    if (page.combo != nullptr) {
+        auto* combo = gtk_label_new(page.combo);
+        gtk_widget_add_css_class(combo, "tutorial-combo");
+        gtk_label_set_xalign(GTK_LABEL(combo), 0.0);
+        gtk_box_append(GTK_BOX(box), combo);
+    }
 
     auto* body = gtk_label_new(page.body);
     gtk_widget_add_css_class(body, "tutorial-body");
