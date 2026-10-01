@@ -10,7 +10,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(cabal-overlay
-    VERSION 0.1.4
+    VERSION 0.1.5
     DESCRIPTION "Native game overlay for Cabal Online (private server)"
     LANGUAGES CXX
 )
