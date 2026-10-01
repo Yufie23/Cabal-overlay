@@ -135,6 +135,11 @@ GApplication* g_app = nullptr;
 // an in-memory copy — and refuse to SAVE, so a corrupted file is
 // never overwritten by accident.
 bool          g_state_writable = true;
+// Chaos Arena "broken door" timer ([chaos] in the TOML). Set when
+// the user starts it (bar button, tray menu, D-Bus action); the tick
+// shows the countdown in the bar and rings at zero. In-memory only —
+// closing the app drops it.
+std::optional<std::chrono::system_clock::time_point> g_chaos_end;
 // Fingerprint of the task list as last rendered in the panel. The
 // tick compares against goals_signature() and only rebuilds the
 // panel widgets when a task actually changed.
@@ -156,12 +161,12 @@ bool          g_game_focused = false;
 // contract stays config-agnostic; the conversion happens here, once.
 platform::Placement placement_from(const OverlayConfig& overlay) {
     return { .anchor = overlay.anchor, .margin_x = overlay.margin_x,
-             .margin_y = overlay.margin_y, .opacity = overlay.opacity };
+             .margin_y = overlay.margin_y, .opacity = overlay.opacity, };
 }
 
 platform::Placement placement_from(const PanelConfig& panel) {
     return { .anchor = panel.anchor, .margin_x = panel.margin_x,
-             .margin_y = panel.margin_y, .opacity = panel.opacity };
+             .margin_y = panel.margin_y, .opacity = panel.opacity, };
 }
 
 // Persists the state; errors are logged, never fatal (losing a
@@ -348,8 +353,38 @@ GoalsActions make_goals_actions() {
 // here — the bar stays short and glanceable.
 std::string bar_text() {
     const auto now = std::chrono::system_clock::now();
-    return local_clock_text(now) + "   " +
-           events_text(g_config.schedules, now, g_config.overlay.max_countdowns);
+    std::string text = local_clock_text(now) + "   " +
+        events_text(g_config.schedules, now, g_config.overlay.max_countdowns);
+    // Active Chaos Arena timer: "CA 04:32" rides the same bar.
+    if (g_chaos_end.has_value()) {
+        const auto remaining = *g_chaos_end - now;
+        if (remaining > std::chrono::seconds{0}) {
+            const auto total = std::chrono::duration_cast<std::chrono::seconds>(
+                remaining).count();
+            text += std::format("   CA {}:{:02}", total / 60, total % 60);
+        }
+    }
+    return text;
+}
+
+// Starts (or restarts) the Chaos Arena timer. Three entry points:
+// the bar's CA button, the tray menu (Windows), and the chaos-timer
+// D-Bus action.
+void start_chaos_timer() {
+    if (!g_config.chaos.enabled) {
+        g_message("chaos timer: disabled in config ([chaos] enabled)");
+        return;
+    }
+    g_chaos_end = std::chrono::system_clock::now() + g_config.chaos.duration;
+    const auto total = g_config.chaos.duration.count();
+    g_message("chaos timer: started, rings in %lld:%02lld",
+              static_cast<long long>(total / 60),
+              static_cast<long long>(total % 60));
+}
+
+// D-Bus action handler for "chaos-timer".
+void on_chaos_timer(GSimpleAction*, GVariant*, gpointer) {
+    start_chaos_timer();
 }
 
 // Persists a dragged position: the anchor becomes "custom" (absolute
@@ -707,6 +742,15 @@ gboolean on_tick(gpointer label_ptr) {
     g_alarms.check(g_config.schedules, g_config.alarms, now,
                    send_alarm_notification);
 
+    // Chaos Arena timer expiry: one ring + notification, then done.
+    if (g_chaos_end.has_value() && now >= *g_chaos_end) {
+        g_chaos_end.reset();
+        play_alarm_sound();
+        send_info_notification("cabal-chaos-timer", "Chaos Arena",
+                               "time to go back and finish it");
+        g_message("chaos timer: expired");
+    }
+
     auto* label = GTK_LABEL(label_ptr);
     const std::string text = bar_text();
     gtk_label_set_text(label, text.c_str());
@@ -788,7 +832,24 @@ GtkWidget* build_bar_window(GtkApplication* app,
 
     GtkWidget* bar = gtk_label_new(bar_text().c_str());
     gtk_widget_add_css_class(bar, "overlay-bar");
-    gtk_window_set_child(GTK_WINDOW(window), bar);
+
+    // The CA button starts the Chaos Arena timer. Text, not a glyph
+    // (font coverage, same lesson as the Settings button). Starting
+    // from here hands the mouse straight back to the game.
+    auto* chaos_button = gtk_button_new_with_label("CA");
+    gtk_widget_add_css_class(chaos_button, "goal-bump");
+    gtk_widget_set_tooltip_text(
+        chaos_button, "Start the Chaos Arena timer ([chaos] duration)");
+    g_signal_connect(chaos_button, "clicked",
+                     G_CALLBACK(+[](GtkButton*, gpointer) {
+                         start_chaos_timer();
+                         set_interactive(false);
+                     }), nullptr);
+
+    auto* bar_box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
+    gtk_box_append(GTK_BOX(bar_box), bar);
+    gtk_box_append(GTK_BOX(bar_box), chaos_button);
+    gtk_window_set_child(GTK_WINDOW(window), bar_box);
 
     // Drag-to-move: while interactive, grabbing the bar moves the
     // surface (persisted as an anchor = "custom" position); a plain
@@ -822,10 +883,10 @@ void on_activate(GtkApplication* app, gpointer) {
     const bool first_run = !tutorial_seen();
     const platform::Placement panel_first_run{
         .anchor = "top", .margin_x = 0, .margin_y = 60,
-        .opacity = g_config.panel.opacity };
+        .opacity = g_config.panel.opacity, };
     const platform::Placement bar_first_run{
         .anchor = "bottom", .margin_x = 0, .margin_y = 60,
-        .opacity = g_config.overlay.opacity };
+        .opacity = g_config.overlay.opacity, };
     GtkWidget* bar = build_bar_window(
         app, first_run ? bar_first_run : placement_from(g_config.overlay));
 
@@ -850,7 +911,7 @@ void on_activate(GtkApplication* app, gpointer) {
     // permissions. On Windows there is no D-Bus action to bind, so
     // any mode except Disabled falls back to the built-in
     // RegisterHotKey combo.
-    auto toggle = [] { set_interactive(!g_interactive); };
+    const auto toggle = [] { set_interactive(!g_interactive); };
     switch (g_config.hotkey.mode) {
     case HotkeyMode::Evdev:
         // Reads /dev/input directly: works on any compositor while
@@ -887,6 +948,7 @@ void on_activate(GtkApplication* app, gpointer) {
         .on_show_settings =
             [] { settings::present(GTK_APPLICATION(g_app), g_config,
                                    kConfigPath); },
+        .on_chaos_timer = [] { start_chaos_timer(); },
         .on_quit = [] { g_application_quit(g_app); },
     });
 
@@ -1001,7 +1063,7 @@ int main(int argc, char* argv[]) {
     // over D-Bus (interface org.gtk.Actions). This is the public remote
     // control of the overlay; KDE custom shortcuts call it:
     //   gdbus call --session --dest dev.cabal.Overlay --object-path /dev/cabal/Overlay --method org.gtk.Actions.Activate toggle-interactive [] {}
-    const std::array<GActionEntry, 5> actions {{
+    const std::array<GActionEntry, 6> actions {{
         {
             .name           = "toggle-interactive",
             .activate       = on_toggle_interactive,
@@ -1037,6 +1099,14 @@ int main(int argc, char* argv[]) {
         {
             .name           = "open-release-page",
             .activate       = on_open_release_page,
+            .parameter_type = nullptr,
+            .state          = nullptr,
+            .change_state   = nullptr,
+            .padding        = {0, 0, 0},
+        },
+        {
+            .name           = "chaos-timer",
+            .activate       = on_chaos_timer,
             .parameter_type = nullptr,
             .state          = nullptr,
             .change_state   = nullptr,

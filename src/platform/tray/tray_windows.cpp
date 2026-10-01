@@ -30,6 +30,7 @@ constexpr UINT kTrayMessage = WM_APP + 1;
 constexpr UINT_PTR kIconId = 1;
 constexpr UINT kCmdSettings = 1;
 constexpr UINT kCmdQuit = 2;
+constexpr UINT kCmdChaosTimer = 3;
 
 HWND g_sink = nullptr;
 bool g_icon_added = false;
@@ -57,6 +58,7 @@ void show_menu() {
     HMENU menu = CreatePopupMenu();
     if (menu == nullptr) return;
     AppendMenuW(menu, MF_STRING, kCmdSettings, L"Open settings");
+    AppendMenuW(menu, MF_STRING, kCmdChaosTimer, L"Start Chaos timer");
     AppendMenuW(menu, MF_STRING, kCmdQuit, L"Quit");
     POINT cursor;
     GetCursorPos(&cursor);
@@ -70,6 +72,8 @@ void show_menu() {
     DestroyMenu(menu);
     if (picked == kCmdSettings && g_actions.on_show_settings)
         g_actions.on_show_settings();
+    else if (picked == kCmdChaosTimer && g_actions.on_chaos_timer)
+        g_actions.on_chaos_timer();
     else if (picked == kCmdQuit && g_actions.on_quit)
         g_actions.on_quit();
 }

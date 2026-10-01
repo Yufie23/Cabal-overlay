@@ -118,7 +118,7 @@ void finish(Wizard* wizard) {
     gtk_window_destroy(GTK_WINDOW(wizard->window));
 }
 
-void sync_navigation(Wizard* wizard) {
+void sync_navigation(const Wizard* wizard) {
     // gboolean is an int; pass the GLib idiom explicitly instead of
     // relying on the bool→int conversion.
     gtk_widget_set_sensitive(wizard->back_button,

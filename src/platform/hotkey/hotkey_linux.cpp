@@ -43,9 +43,9 @@ struct Combo {
     int key_code = -1;
 };
 
-constexpr unsigned kModShift = 1u << 0;
-constexpr unsigned kModCtrl  = 1u << 1;
-constexpr unsigned kModAlt   = 1u << 2;
+constexpr unsigned kModShift = 1;
+constexpr unsigned kModCtrl  = 2;
+constexpr unsigned kModAlt   = 4;
 
 Combo        g_combo;
 std::function<void()> g_on_trigger;
@@ -126,8 +126,9 @@ Combo parse_combo(const std::string& text) {
     return combo;
 }
 
-bool test_bit(const unsigned char* bitfield, int bit) {
-    return ((bitfield[bit / 8] >> (bit % 8)) & 1) != 0;
+bool test_bit(const unsigned char* bitfield, unsigned bit) {
+    const auto byte = static_cast<unsigned>(bitfield[bit / 8]);
+    return ((byte >> (bit % 8)) & 1u) != 0;
 }
 
 // Keyboard heuristic: has EV_KEY, lacks EV_REL/EV_ABS (mice and

@@ -26,8 +26,8 @@ visible = true
 anchor = "custom"  # a single edge (no top/bottom) centers vertically
 # "custom" works here too: drag the panel while interactive and it
 # saves its absolute position in margin_x/margin_y (see [overlay]).
-margin_x = 1164
-margin_y = 435
+margin_x = 1254
+margin_y = 758
 opacity = 0.9
 # Display toggles (the panel header has quick buttons for both):
 # short_names = true shows the catalog short code (AC, MI, FT3);
@@ -45,6 +45,15 @@ collapsed = true
 # Set check = false to disable it entirely.
 [updates]
 check = true
+
+# ─────────────────────────────────────────────────────────────
+# Chaos Arena timer. The run is semi-AFK: you start it, break the
+# door, and should come back when this rings. The timer starts
+# manually — the CA button on the bar (interactive mode), the tray
+# menu (Windows), or the chaos-timer D-Bus action. duration is M:SS.
+[chaos]
+enabled = true
+duration = "5:50"
 
 # How the global "make overlay clickable" combo reaches the app.
 #

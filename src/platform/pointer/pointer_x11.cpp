@@ -46,8 +46,12 @@ bool ctrl_held() {
     XQueryKeymap(g_display, keymap.data());
     constexpr int ctrl_l = 37;
     constexpr int ctrl_r = 109;
-    return (keymap[ctrl_l / 8] & (1 << (ctrl_l % 8))) != 0 ||
-           (keymap[ctrl_r / 8] & (1 << (ctrl_r % 8))) != 0;
+    const auto bit_of = [&keymap](int code) {
+        const auto index = static_cast<unsigned>(code);
+        return (static_cast<unsigned char>(keymap[index / 8]) &
+                (1u << (index % 8))) != 0;
+    };
+    return bit_of(ctrl_l) || bit_of(ctrl_r);
 }
 
 gboolean on_poll(gpointer) {

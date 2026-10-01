@@ -64,7 +64,7 @@ bool is_newer(const std::string& latest, const std::string& current) {
 
 void on_curl_done(GObject* source, GAsyncResult* result,
                   gpointer payload_ptr) {
-    auto* payload = static_cast<Payload*>(payload_ptr);
+    const auto* payload = static_cast<const Payload*>(payload_ptr);
     char* output = nullptr;
     GError* error = nullptr;
     const gboolean ok = g_subprocess_communicate_utf8_finish(
@@ -111,7 +111,7 @@ void check_latest(const std::string& current_version,
         return;
     }
     auto* payload = new Payload{ .on_newer = std::move(on_newer),
-                                 .current = current_version };
+                                 .current = current_version, };
     g_subprocess_communicate_utf8_async(process, nullptr, nullptr,
                                         on_curl_done, payload);
     g_object_unref(process); // the async operation holds its own ref

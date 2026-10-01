@@ -174,6 +174,10 @@ registry warnings.
   Download button (app.open-release-page). The compiled-in version
   comes from CABAL_OVERLAY_VERSION (CMake PROJECT_VERSION) — bump
   CMakeLists on every release or the check lies.
+- Chaos Arena timer (`[chaos]`): manual start (bar CA button, tray
+  menu, chaos-timer D-Bus action — no game-memory detection by
+  design), countdown rides bar_text, expiry rings + notifies in
+  on_tick. In-memory only: closing the app drops it.
 
 ## Conventions
 - The vendored HTML tracker (`Prosperity_Task_Tracker.v6.1/`) is a read-only

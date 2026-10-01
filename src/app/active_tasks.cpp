@@ -46,9 +46,9 @@ TaskList materialize_active_tasks(const std::vector<TaskPreset>& presets,
         task.name = def->name;
         task.goal = def->goal;
         task.locked = true; // template content: no remove button
-        if (auto it = progress.counts.find(name); it != progress.counts.end())
+        if (const auto it = progress.counts.find(name); it != progress.counts.end())
             task.count = it->second;
-        if (auto it = progress.completed.find(name); it != progress.completed.end())
+        if (const auto it = progress.completed.find(name); it != progress.completed.end())
             task.completed = it->second;
         list.all().push_back(std::move(task));
     }

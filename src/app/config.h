@@ -134,6 +134,16 @@ struct UpdatesConfig {
     bool check = true; // one async GitHub API call at startup
 };
 
+// [chaos] section — the Chaos Arena "broken door" timer. The run is
+// semi-AFK: start it, break the door, wait, and come back to finish.
+// We cannot detect the run without reading game memory, so the timer
+// starts manually (bar button, tray menu, D-Bus action) and rings
+// after `duration`.
+struct ChaosConfig {
+    bool enabled = true;
+    std::chrono::seconds duration = std::chrono::seconds{350}; // 5:50
+};
+
 struct AppConfig {
     std::vector<ScheduleEvent> schedules;
     OverlayConfig overlay;
@@ -142,6 +152,7 @@ struct AppConfig {
     HotkeyConfig hotkey;
     DgcheckConfig dgcheck;
     UpdatesConfig updates;
+    ChaosConfig chaos;
 };
 
 // Parses the TOML file into an AppConfig.

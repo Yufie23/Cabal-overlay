@@ -173,7 +173,7 @@ void on_drag_update(GtkGestureDrag*, double offset_x, double offset_y,
 
 void on_drag_end(GtkGestureDrag*, double offset_x, double offset_y,
                  gpointer state_ptr) {
-    auto* state = static_cast<DragState*>(state_ptr);
+    const auto* state = static_cast<const DragState*>(state_ptr);
     // Restore the configured opacity regardless of how the drag ended.
     gtk_widget_set_opacity(GTK_WIDGET(state->window),
                            state->current.opacity);

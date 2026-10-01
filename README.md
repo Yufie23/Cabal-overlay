@@ -41,6 +41,11 @@ not do.
 - **DG Check**: auto-increments a dungeon counter when you Ctrl+click the
   in-game dungeon-clear dialog — you calibrate the dialog position once
   in Settings.
+- **Chaos Arena timer**: one click starts the "broken door" countdown
+  (default 5:50, configurable) — it rides the bar and rings with a
+  notification when it's time to go back and finish. Start it from the
+  CA button on the bar, the tray menu (Windows), or the `chaos-timer`
+  D-Bus action.
 - **Click-through by default**: the overlay never steals clicks from the
   game. A hotkey (or a desktop shortcut on Linux) toggles "interactive"
   mode to drag windows, change settings, or add tasks.

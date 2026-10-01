@@ -298,7 +298,7 @@ void on_animation_bar_destroyed(gpointer data, GObject*) {
     // The bar was destroyed (panel rebuild, app exit) mid-animation:
     // kill its timer before freeing the payload. The main loop is
     // single-threaded, so no tick can race this.
-    auto* anim = static_cast<ProgressAnimation*>(data);
+    const auto* anim = static_cast<const ProgressAnimation*>(data);
     if (anim->source_id != 0) g_source_remove(anim->source_id);
     delete anim;
 }

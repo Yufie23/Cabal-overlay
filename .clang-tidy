@@ -25,6 +25,7 @@ Checks: >
   -readability-braces-around-statements,
   -readability-inconsistent-ifelse-braces,
   -readability-named-parameter,
+  -readability-trailing-comma,
   -misc-non-private-member-variables-in-classes,
   -misc-no-recursion,
   -bugprone-throwing-static-initialization,
@@ -50,6 +51,8 @@ Checks: >
 # -readability-named-parameter: GTK callbacks have fixed signatures
 #   full of unused params; omitting their names is the C++ idiom for
 #   exactly that.
+# -readability-trailing-comma: pure style churn (and its defaults
+#   shifted across clang-tidy versions); the house never enforced it.
 # -misc-non-private-member-variables-in-classes: plain aggregate
 #   structs ARE the house style for data and GTK payloads; turning
 #   them into classes would be ceremony, not safety.

@@ -31,6 +31,19 @@ std::chrono::minutes parse_hhmm(const std::string& text) {
     return std::chrono::hours{hh} + std::chrono::minutes{mm};
 }
 
+// "5:50" → 350 seconds, a DURATION (not a wall-clock time). Same
+// strict shape as parse_hhmm but M:SS, up to 59:59.
+std::chrono::seconds parse_mmss(const std::string& text) {
+    if (text.size() < 3 || text.size() > 5 ||
+        text[text.size() - 3] != ':')
+        throw std::runtime_error("bad duration format (expected M:SS): '" + text + "'");
+    const int mm = std::stoi(text.substr(0, text.size() - 3));
+    const int ss = std::stoi(text.substr(text.size() - 2, 2));
+    if (mm < 0 || mm > 59 || ss < 0 || ss > 59)
+        throw std::runtime_error("duration out of range (0:00-59:59): '" + text + "'");
+    return std::chrono::minutes{mm} + std::chrono::seconds{ss};
+}
+
 std::chrono::weekday parse_weekday(const std::string& name) {
     // Structured bindings (`auto& [text, day]`) unpack each pair
     // from the array, like destructuring in JS.
@@ -91,6 +104,12 @@ AppConfig load_config(const std::string& path) {
 
     if (const auto* updates = root["updates"].as_table(); updates != nullptr) {
         config.updates.check = (*updates)["check"].value_or(config.updates.check);
+    }
+
+    if (const auto* chaos = root["chaos"].as_table(); chaos != nullptr) {
+        config.chaos.enabled = (*chaos)["enabled"].value_or(config.chaos.enabled);
+        if (const auto duration = (*chaos)["duration"].value<std::string>())
+            config.chaos.duration = parse_mmss(*duration);
     }
 
     if (const auto* hotkey = root["hotkey"].as_table(); hotkey != nullptr) {

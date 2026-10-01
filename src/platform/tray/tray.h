@@ -28,6 +28,7 @@ namespace platform {
 // one simply disables that menu item's effect.
 struct TrayActions {
     std::function<void()> on_show_settings;
+    std::function<void()> on_chaos_timer;
     std::function<void()> on_quit;
 };
 
