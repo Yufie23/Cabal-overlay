@@ -26,8 +26,8 @@ visible = true
 anchor = "custom"  # a single edge (no top/bottom) centers vertically
 # "custom" works here too: drag the panel while interactive and it
 # saves its absolute position in margin_x/margin_y (see [overlay]).
-margin_x = 1254
-margin_y = 758
+margin_x = 1247
+margin_y = 742
 opacity = 0.9
 # Display toggles (the panel header has quick buttons for both):
 # short_names = true shows the catalog short code (AC, MI, FT3);
@@ -98,8 +98,8 @@ combo = "Shift+Space"       # only read in "evdev" mode
 # is the marker "this click was meant for the counter, not the game".
 [dgcheck]
 enabled = true
-x = 850
-y = 499
+x = 767
+y = 660
 width = 240
 height = 120
 require_ctrl = true

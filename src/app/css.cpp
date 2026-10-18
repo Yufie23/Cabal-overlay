@@ -56,6 +56,16 @@ void apply() {
             margin-top: 4px;
             margin-bottom: 4px;
         }
+        .toast-title {
+            font-family: monospace;
+            font-size: 13px;
+            font-weight: bold;
+            color: #ffd24d;
+        }
+        .toast-body {
+            font-family: monospace;
+            font-size: 12px;
+        }
         .tutorial-body {
             font-size: 13px;
         }

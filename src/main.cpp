@@ -62,6 +62,7 @@
 #include "ui/goals_panel.h"
 #include "ui/panel_surface.h"
 #include "ui/settings_window.h"
+#include "ui/toast.h"
 #include "ui/tutorial.h"
 
 namespace {
@@ -626,17 +627,20 @@ void play_alarm_sound() {
     platform::play_alarm_bell(g_config.alarms.volume);
 }
 
-// Delivery side of the alarm: a desktop notification through
-// GNotification (GLib, not GTK — composes fine with the app's own
-// windows). The id replaces the previous alarm notification with the
-// same event instead of stacking duplicates in the notification tray.
+// Delivery side of the alarm. On Linux this is a desktop
+// notification through GNotification; on Windows (where
+// GNotification has no working backend) it's our own overlay toast.
 void send_alarm_notification(const ScheduleEvent& event, int minutes) {
-    auto* notification = g_notification_new(event.name.c_str());
     const std::string body = std::format("starts in {} min", minutes);
+#ifdef _WIN32
+    toast::show(GTK_APPLICATION(g_app), event.name, body);
+#else
+    auto* notification = g_notification_new(event.name.c_str());
     g_notification_set_body(notification, body.c_str());
     const std::string id = "cabal-alarm-" + event.id;
     g_application_send_notification(g_app, id.c_str(), notification);
     g_object_unref(notification);
+#endif
     play_alarm_sound();
     g_message("alarm: %s in %d min", event.name.c_str(), minutes);
 }
@@ -645,10 +649,14 @@ void send_alarm_notification(const ScheduleEvent& event, int minutes) {
 // sound — this is not an alarm, just an acknowledgement).
 void send_info_notification(const char* id, const char* title,
                             const std::string& body) {
+#ifdef _WIN32
+    toast::show(GTK_APPLICATION(g_app), title, body);
+#else
     auto* notification = g_notification_new(title);
     g_notification_set_body(notification, body.c_str());
     g_application_send_notification(g_app, id, notification);
     g_object_unref(notification);
+#endif
 }
 
 // Sensor → app logic. Runs on the GLib main thread (the pointer poll
@@ -675,6 +683,15 @@ void on_pointer_click(int x, int y, bool ctrl) {
             send_info_notification("cabal-dgcheck-calibrated",
                                    "Click zone captured", body);
             g_message("dgcheck: zone captured at %d,%d (center)", x, y);
+            // The settings page otherwise shows the OLD zone forever
+            // (it was a creation-time snapshot) — update it live.
+            settings::update_zone(
+                DgcheckConfig{ .enabled = true,
+                               .x = x - half_w,
+                               .y = y - half_h,
+                               .width = g_config.dgcheck.width,
+                               .height = g_config.dgcheck.height,
+                               .require_ctrl = g_config.dgcheck.require_ctrl });
         } catch (const std::exception& error) {
             g_warning("dgcheck: could not save captured zone: %s",
                       error.what());
@@ -709,6 +726,12 @@ void on_pointer_click(int x, int y, bool ctrl) {
 // window button and any desktop shortcut can both trigger it.
 void on_calibrate_zone(GSimpleAction*, GVariant*, gpointer) {
     g_calibrating_click = true;
+    // Visible prompt, not just a log line: on Windows a notification
+    // would be invisible, so this goes through the same toast path as
+    // the capture confirmation.
+    send_info_notification("cabal-dgcheck-armed", "DG Check",
+                           "Click the dungeon dialog button once to "
+                           "set the zone center");
     g_message("dgcheck: waiting for the next click to capture the "
               "dialog position");
 }

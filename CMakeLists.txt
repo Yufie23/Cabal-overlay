@@ -10,7 +10,7 @@
 cmake_minimum_required(VERSION 3.25)
 
 project(cabal-overlay
-    VERSION 0.1.5
+    VERSION 0.1.6
     DESCRIPTION "Native game overlay for Cabal Online (private server)"
     LANGUAGES CXX
 )
@@ -63,6 +63,7 @@ set(APP_SOURCES
     src/ui/goals_panel.cpp
     src/ui/panel_surface.cpp
     src/ui/settings_window.cpp
+    src/ui/toast.cpp
     src/ui/tutorial.cpp
 )
 

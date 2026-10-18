@@ -24,6 +24,7 @@
 namespace {
 
 GtkWindow* g_window = nullptr; // the singleton
+GtkWidget* g_zone_label = nullptr; // DG Check page: live zone caption
 // The app behind the singleton, kept so widgets built here can fire
 // application-level GActions (e.g. the dgcheck calibrate action)
 // without threading pointers through every factory.
@@ -292,11 +293,12 @@ GtkWidget* build_dgcheck_page(const AppConfig& config,
             make_spin(path, "dgcheck.height", zone.height, 16, 1200));
 
     // Snapshot of the captured zone. The numbers refresh when this
-    // window reopens; calibration itself is one click anywhere on
-    // screen, reported back through a desktop notification.
+    // window reopens, and live after a successful capture through
+    // settings::update_zone.
     const std::string zone_text = std::format("Captured zone: ({}, {}) — {}×{}",
                                               zone.x, zone.y, zone.width, zone.height);
     auto* zone_label = gtk_label_new(zone_text.c_str());
+    g_zone_label = zone_label; // settings::update_zone writes through this
     gtk_label_set_xalign(GTK_LABEL(zone_label), 0.0);
     gtk_grid_attach(grid, zone_label, 0, row, 2, 1);
     ++row;
@@ -393,6 +395,17 @@ void present(GtkApplication* app, const AppConfig& config,
                      }), nullptr);
 
     gtk_window_present(g_window);
+}
+
+// Live-updates the captured-zone caption after a successful capture.
+// Without this, the DG Check page kept showing the snapshot from when
+// the window was created, so users thought the capture never took.
+void update_zone(const DgcheckConfig& zone) {
+    if (g_zone_label == nullptr) return;
+    const std::string text = std::format("Captured zone: ({}, {}) — {}×{}",
+                                         zone.x, zone.y, zone.width,
+                                         zone.height);
+    gtk_label_set_text(GTK_LABEL(g_zone_label), text.c_str());
 }
 
 } // namespace settings

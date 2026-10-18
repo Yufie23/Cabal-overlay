@@ -25,4 +25,7 @@ namespace settings {
 void present(GtkApplication* app, const AppConfig& config,
              const std::string& config_path);
 
+// Live-updates the captured-zone caption after a successful capture.
+void update_zone(const DgcheckConfig& zone);
+
 } // namespace settings

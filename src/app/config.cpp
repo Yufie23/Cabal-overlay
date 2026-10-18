@@ -312,10 +312,17 @@ void set_config_value(const std::string& path, const std::string& dotted_key,
     if (!written) {
         // The key is not there yet: append it inside its section
         // instead of failing (a hand-trimmed TOML may lack defaults
-        // the app knows how to compute).
-        if (!section_seen)
-            throw std::runtime_error("section not found in " + path + ": [" +
-                                     section + "]");
+        // the app knows how to compute). If the SECTION itself is
+        // missing (e.g. an older config that predates it), create it
+        // instead of throwing — otherwise the calibration write can
+        // never succeed on an old file.
+        if (!section_seen) {
+            lines.emplace_back();
+            lines.emplace_back("[" + section + "]");
+            // The new section is now the last one: its keys go after
+            // the header, not after the previous section's last key.
+            insert_at = lines.size();
+        }
         lines.insert(lines.begin() + static_cast<std::ptrdiff_t>(insert_at),
                      key + " = " + render_toml_value(value));
     }

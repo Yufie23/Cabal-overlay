@@ -92,6 +92,10 @@ No unchecked type punning. In practice:
   unclosable (this was the 0.1.0 Windows testers' showstopper: the
   title-match detection never found the client, and with no tray icon
   there was no way out).
+- Notifications on Windows have no GNotification backend (IToast is too
+  new and unreliable under Wine), so ui/toast.* is our own overlay
+  surface (top-center, 4 s fade). Linux keeps GNotification; the two
+  send_* helpers pick by platform.
 - Later phases read game memory from outside via `process_vm_readv()` /
   `/proc/<pid>/mem`; offsets found with PINCE/scanmem. See `docs/01-overlay-estatico.md`
   for the original standalone-widget plan (superseded for phase 1) and the
