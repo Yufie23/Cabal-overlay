@@ -112,6 +112,11 @@ AppConfig load_config(const std::string& path) {
             config.chaos.duration = parse_mmss(*duration);
     }
 
+    if (const auto* debug = root["debug"].as_table(); debug != nullptr) {
+        config.debug.log_to_file =
+            (*debug)["log_to_file"].value_or(config.debug.log_to_file);
+    }
+
     if (const auto* hotkey = root["hotkey"].as_table(); hotkey != nullptr) {
         // Enum modes parse explicitly: an unknown mode string is a
         // config typo and must fail loudly, not silently disable the

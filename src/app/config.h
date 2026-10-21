@@ -134,6 +134,14 @@ struct UpdatesConfig {
     bool check = true; // one async GitHub API call at startup
 };
 
+// [debug] section — support tooling. On Windows the exe is a GUI
+// process with no console, so g_message/g_warning vanish into thin
+// air; with log_to_file they are mirrored to debug.log next to the
+// state files. Off by default (it appends forever).
+struct DebugConfig {
+    bool log_to_file = false;
+};
+
 // [chaos] section — the Chaos Arena "broken door" timer. The run is
 // semi-AFK: start it, break the door, wait, and come back to finish.
 // We cannot detect the run without reading game memory, so the timer
@@ -153,6 +161,7 @@ struct AppConfig {
     DgcheckConfig dgcheck;
     UpdatesConfig updates;
     ChaosConfig chaos;
+    DebugConfig debug;
 };
 
 // Parses the TOML file into an AppConfig.

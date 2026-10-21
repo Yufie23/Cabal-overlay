@@ -55,6 +55,15 @@ check = true
 enabled = true
 duration = "5:50"
 
+# ─────────────────────────────────────────────────────────────
+# Debug: on Windows the app is a GUI process with no console, so
+# all log output (g_message/g_warning) vanishes. log_to_file mirrors
+# it to debug.log next to the state files — enable it when someone
+# reports a problem and we need to see what the app is doing.
+# Off by default: it appends forever.
+[debug]
+log_to_file = false
+
 # How the global "make overlay clickable" combo reaches the app.
 #
 #   "external" → RECOMMENDED. A desktop shortcut calls the D-Bus

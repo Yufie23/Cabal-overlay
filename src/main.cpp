@@ -659,6 +659,36 @@ void send_info_notification(const char* id, const char* title,
 #endif
 }
 
+// File log: a GLib writer that mirrors every log line to debug.log
+// (next to the state files). Needed on Windows, where a GUI process
+// has no console and every g_message/g_warning would be lost.
+std::ofstream g_debug_log;
+
+GLogWriterOutput debug_log_writer(GLogLevelFlags, const GLogField* fields,
+                                  gsize n_fields, gpointer) {
+    for (gsize i = 0; i < n_fields; ++i) {
+        if (g_strcmp0(fields[i].key, "MESSAGE") != 0) continue;
+        const auto* message = static_cast<const char*>(fields[i].value);
+        g_debug_log << message << '\n';
+        g_debug_log.flush();
+    }
+    return G_LOG_WRITER_HANDLED;
+}
+
+void enable_file_logging() {
+    if (!g_config.debug.log_to_file) return;
+    const auto path = g_state_path.parent_path() / "debug.log";
+    g_debug_log.open(path, std::ios::app);
+    if (!g_debug_log) {
+        g_warning("could not open debug log file %s", path.string().c_str());
+        return;
+    }
+    g_debug_log << "─── session start ───\n";
+    g_debug_log.flush();
+    g_log_set_writer_func(debug_log_writer, nullptr, nullptr);
+    g_message("debug: logging to %s", path.string().c_str());
+}
+
 // Sensor → app logic. Runs on the GLib main thread (the pointer poll
 // is a GLib timer), so it touches the same globals every other
 // callback uses — no locking, same as the tick.
@@ -1041,6 +1071,9 @@ int main(int argc, char* argv[]) {
     // MALFORMED one keeps us running in memory but disables saving,
     // so the damaged file stays on disk for manual repair.
     g_state_path = default_state_path();
+    // Debug logging needs the state dir: install the file writer as
+    // soon as the path exists (config was loaded just above).
+    enable_file_logging();
     try {
         g_state = load_state(g_state_path);
     } catch (const std::exception& error) {
