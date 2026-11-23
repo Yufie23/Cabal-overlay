@@ -13,7 +13,6 @@
 namespace {
 
 constexpr guint kToastLifetimeMs = 4000;
-constexpr guint kFadeStepMs = 50;
 constexpr int kFadeSteps = 8; // 400 ms of fade after ~3.6 s
 
 struct ToastState {
@@ -42,7 +41,7 @@ gboolean on_fade_step(gpointer) {
     }
     gtk_widget_set_opacity(
         GTK_WIDGET(g_toast.window),
-        1.0 - static_cast<double>(g_toast.fade_step) / kFadeSteps);
+        1.0 - (static_cast<double>(g_toast.fade_step) / kFadeSteps));
     return G_SOURCE_CONTINUE;
 }
 

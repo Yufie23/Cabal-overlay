@@ -255,6 +255,10 @@ void set_config_value(const std::string& path, const std::string& dotted_key,
     std::vector<std::string> lines;
     for (std::string line; std::getline(input, line);)
         lines.push_back(std::move(line));
+    // Close BEFORE the atomic rename: Windows refuses to rename over
+    // a file we still hold open for reading ("Permission denied").
+    // POSIX allows it, which is why this only ever failed on Windows.
+    input.close();
 
     bool in_section = false;
     bool section_seen = false;

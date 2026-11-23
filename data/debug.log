@@ -1,0 +1,142 @@
+─── session start ───
+debug: logging to C:\Users\Gonza\AppData\Roaming\cabal-overlay\debug.log
+win32 session dbus binary not found
+_g_io_module_get_default: Found default implementation winhttp (GWinHttpVfs) for ‘gio-vfs’
+preset '300k-500k': resolved 'Aos1' -> 'Altar of Siena B1F'
+preset '300k-500k': resolved 'PCH' -> 'Panic Cave (Hard)'
+preset '300k-500k': resolved 'SCh' -> 'Steamer Crazy (Hard)'
+preset '300k-500k': resolved 'CFh' -> 'Catacomb Frost (Hard)'
+preset '300k-500k': resolved 'lhh' -> 'Lava Hellfire (Hard)'
+preset '300k-500k': resolved 'HVh' -> 'Hazardous Valley (Hard)'
+preset '300k-500k': resolved 'CA5' -> 'Chaos Arena Lv.5'
+preset '300k-500k': resolved 'ca6' -> 'Chaos Arena Lv.6'
+preset '300k-500k': resolved 'sod' -> 'Volcanic Citadel'
+preset '300k-500k': resolved 'alh' -> 'Lava Hellfire (Awakened)'
+preset '300k-500k': resolved 'asc' -> 'Steamer Crazy (Awakened)'
+preset '300k-500k': resolved 'acf' -> 'Catacomb Frost (Awakened)'
+preset '300k-500k': resolved 'apc' -> 'Panic Cave (Awakened)'
+preset '300k-500k': resolved 'ahv' -> 'Hazardous Valley (Awakened)'
+preset '300k-500k': resolved 'FD' -> 'Flame Dimension'
+preset '500k-800k': resolved 'hk' -> 'Holy Keldrasil'
+preset '500k-800k': resolved 'hw' -> 'Holy Windmill'
+preset '500k-800k': resolved 'eop' -> 'Edge of Phantom'
+preset '500k-800k': resolved 'aic1' -> 'Illusion Castle Underworld (Apocrypha)'
+preset '500k-800k': resolved 'aic2' -> 'Illusion Castle Radiant Hall (Apocrypha)'
+preset '500k-800k': resolved 'ahv' -> 'Hazardous Valley (Awakened)'
+preset '500k-800k': resolved 'Aos1' -> 'Altar of Siena B1F'
+preset '500k-800k': resolved 'Aos2' -> 'Altar of Siena B2F'
+preset '500k-800k': resolved 'fd' -> 'Flame Dimension'
+preset '800k-1.2m': resolved 'hk' -> 'Holy Keldrasil'
+preset '800k-1.2m': resolved 'hw' -> 'Holy Windmill'
+preset '800k-1.2m': resolved 'hs' -> 'Holy Shrine'
+preset '800k-1.2m': resolved 'afi' -> 'Forbidden Island (Awakened)'
+preset '800k-1.2m': resolved 'eop' -> 'Edge of Phantom'
+preset '800k-1.2m': resolved 'Aic1' -> 'Illusion Castle Underworld (Apocrypha)'
+preset '800k-1.2m': resolved 'Aic2' -> 'Illusion Castle Radiant Hall (Apocrypha)'
+preset '800k-1.2m': resolved 'eod3' -> 'Tower of Undead B3F'
+preset '800k-1.2m': resolved 'eod3p2' -> 'Tower of the Dead B3F (Part2)'
+preset '800k-1.2m': resolved 'fd' -> 'Flame Dimension'
+preset '1.2m-1.5m': resolved 'eca' -> 'Eternal Chaos Arena'
+preset '1.2m-1.5m': resolved 'gi' -> 'Glacies Inferna'
+preset '1.2m-1.5m': resolved 'hk' -> 'Holy Keldrasil'
+preset '1.2m-1.5m': resolved 'hs' -> 'Holy Shrine'
+preset '1.2m-1.5m': resolved 'ac' -> 'Abandoned City'
+preset '1.2m-1.5m': resolved 'fn' -> 'Flame Nest'
+preset '1.2m-1.5m': resolved 'at' -> 'Ancient Tomb'
+preset '1.2m-1.5m': resolved 'fc' -> 'Frozen Canyon'
+preset '1.2m-1.5m': resolved 'tm' -> 'Terminus Machina'
+preset '1.2m-1.5m': resolved 'fd' -> 'Flame Dimension'
+preset '+1.5m': resolved 'eca' -> 'Eternal Chaos Arena'
+preset '+1.5m': resolved 'gi' -> 'Glacies Inferna'
+preset '+1.5m': resolved 'hs' -> 'Holy Shrine'
+preset '+1.5m': resolved 'god' -> 'Garden of Dust'
+preset '+1.5m': resolved 'mi' -> 'Mirage Island'
+preset '+1.5m': resolved 'al' -> 'Automata Lab'
+preset '+1.5m': resolved 'fn' -> 'Flame Nest'
+preset '+1.5m': resolved 'at' -> 'Ancient Tomb'
+preset '+1.5m': resolved 'fc' -> 'Frozen Canyon'
+preset '+1.5m': resolved 'tm' -> 'Terminus Machina'
+preset '+1.5m': resolved 'fd' -> 'Flame Dimension'
+Vulkan: Loader Message: Inserted device layer "VK_LAYER_OBS_HOOK" (C:\ProgramData\obs-studio-hook\graphics-hook64.dll)
+Vulkan: Loader Message: Inserted device layer "VK_LAYER_NV_present" (C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_a3944b54ff18b284\nvoglv64.dll)
+Vulkan: Loader Message: Inserted device layer "VK_LAYER_NV_optimus" (C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_a3944b54ff18b284\nvoglv64.dll)
+Vulkan: Loader Message: Failed to find vkGetDeviceProcAddr in layer "C:\Windows\System32\DriverStore\FileRepository\u0195698.inf_amd64_480d395d3459e71d\B025498\amdvlk64.dll"
+Vulkan: Loader Message: vkCreateDevice layer callstack setup to:
+Vulkan: Loader Message:    <Application>
+Vulkan: Loader Message:      ||
+Vulkan: Loader Message:    <Loader>
+Vulkan: Loader Message:      ||
+Vulkan: Loader Message:    VK_LAYER_NV_optimus
+Vulkan: Loader Message:            Type: Implicit
+Vulkan: Loader Message:            Enabled By: Implicit Layer
+Vulkan: Loader Message:                Disable Env Var:  DISABLE_LAYER_NV_OPTIMUS_1
+Vulkan: Loader Message:            Manifest: C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_a3944b54ff18b284\nv-vk64.json
+Vulkan: Loader Message:            Library:  C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_a3944b54ff18b284\nvoglv64.dll
+Vulkan: Loader Message:      ||
+Vulkan: Loader Message:    VK_LAYER_NV_present
+Vulkan: Loader Message:            Type: Implicit
+Vulkan: Loader Message:            Enabled By: Implicit Layer
+Vulkan: Loader Message:                Disable Env Var:  DISABLE_LAYER_NV_PRESENT_1
+Vulkan: Loader Message:            Manifest: C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_a3944b54ff18b284\nv-vk64.json
+Vulkan: Loader Message:            Library:  C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_a3944b54ff18b284\nvoglv64.dll
+Vulkan: Loader Message:      ||
+Vulkan: Loader Message:    VK_LAYER_OBS_HOOK
+Vulkan: Loader Message:            Type: Implicit
+Vulkan: Loader Message:            Enabled By: Implicit Layer
+Vulkan: Loader Message:                Disable Env Var:  DISABLE_VULKAN_OBS_CAPTURE
+Vulkan: Loader Message:            Manifest: C:\ProgramData\obs-studio-hook\obs-vulkan64.json
+Vulkan: Loader Message:            Library:  C:\ProgramData\obs-studio-hook\graphics-hook64.dll
+Vulkan: Loader Message:      ||
+Vulkan: Loader Message:    <Device>
+Vulkan: Loader Message:        Using "NVIDIA GeForce RTX 4070 Ti SUPER" with driver: "C:\Windows\System32\DriverStore\FileRepository\nv_dispi.inf_amd64_a3944b54ff18b284\nvoglv64.dll"
+interactive mode: OFF (click-through)
+game watch: overlay shows only while the game holds focus (initially focused)
+hotkey: 'Shift+Space' active (register: yes, poll: yes)
+tray: icon added (right-click: settings / quit)
+dgcheck: pointer watch active (zone 240x120 at 850,499, ctrl required: yes)
+update check: cannot start curl: Failed to execute helper program (No such file or directory)
+Unexpectedly, UWP app `Microsoft.OutlookForWindows_1.2026.818.0_x64__8wekyb3d8bbwe' (AUMId `Microsoft.OutlookForWindows_8wekyb3d8bbwe!Microsoft.OutlookforWindows') supports 5 extensions but has no verbs
+Collecting capable appnames: 0ms
+Allocating hashtables:...... 0ms
+Reading capable apps:        47ms
+Reading URL associations:... 0ms
+Reading extension assocs:    31ms
+Reading exe-only apps:...... 16ms
+Reading classes:             234ms
+Reading UWP apps:            578ms
+Postprocessing:..............0ms
+TOTAL:                       906ms
+interactive mode: ON (overlay clickable)
+dgcheck: waiting for the next click to capture the dialog position
+dgcheck: could not save captured zone: atomic rename failed: Permission denied
+config reloaded from C:\Users\Gonza\AppData\Roaming\cabal-overlay\overlay.toml
+config reloaded from C:\Users\Gonza\AppData\Roaming\cabal-overlay\overlay.toml
+config reloaded from C:\Users\Gonza\AppData\Roaming\cabal-overlay\overlay.toml
+dgcheck: waiting for the next click to capture the dialog position
+dgcheck: could not save captured zone: atomic rename failed: Permission denied
+config reloaded from C:\Users\Gonza\AppData\Roaming\cabal-overlay\overlay.toml
+config reloaded from C:\Users\Gonza\AppData\Roaming\cabal-overlay\overlay.toml
+config reloaded from C:\Users\Gonza\AppData\Roaming\cabal-overlay\overlay.toml
+dgcheck: waiting for the next click to capture the dialog position
+dgcheck: could not save captured zone: atomic rename failed: Permission denied
+config reloaded from C:\Users\Gonza\AppData\Roaming\cabal-overlay\overlay.toml
+config reloaded from C:\Users\Gonza\AppData\Roaming\cabal-overlay\overlay.toml
+config reloaded from C:\Users\Gonza\AppData\Roaming\cabal-overlay\overlay.toml
+dgcheck: waiting for the next click to capture the dialog position
+dgcheck: could not save captured zone: atomic rename failed: Permission denied
+config reloaded from C:\Users\Gonza\AppData\Roaming\cabal-overlay\overlay.toml
+config reloaded from C:\Users\Gonza\AppData\Roaming\cabal-overlay\overlay.toml
+config reloaded from C:\Users\Gonza\AppData\Roaming\cabal-overlay\overlay.toml
+game watch: game unfocused
+Unexpectedly, UWP app `Microsoft.OutlookForWindows_1.2026.818.0_x64__8wekyb3d8bbwe' (AUMId `Microsoft.OutlookForWindows_8wekyb3d8bbwe!Microsoft.OutlookforWindows') supports 5 extensions but has no verbs
+Collecting capable appnames: 0ms
+Allocating hashtables:...... 0ms
+Reading capable apps:        63ms
+Reading URL associations:... 0ms
+Reading extension assocs:    31ms
+Reading exe-only apps:...... 31ms
+Reading classes:             125ms
+Reading UWP apps:            375ms
+Postprocessing:..............0ms
+TOTAL:                       625ms
+game watch: game focused
