@@ -504,6 +504,7 @@ void persist_adjusted_margins(const std::string& section,
 // toggles them.
 void sync_game_watch();
 void apply_overlay_visibility();
+void enable_file_logging();
 
 // Live config reload: the file watcher calls this whenever the
 // TOML changes. Unlike startup, a broken file here is NOT fatal:
@@ -527,6 +528,7 @@ void reload_config() {
                                                   panel));
         }
         g_message("config reloaded from %s", kConfigPath.c_str());
+        enable_file_logging(); // honor a mid-run toggle of [debug] log_to_file
         sync_game_watch();
         apply_overlay_visibility();
     } catch (const std::exception& error) {
@@ -676,17 +678,27 @@ GLogWriterOutput debug_log_writer(GLogLevelFlags, const GLogField* fields,
 }
 
 void enable_file_logging() {
-    if (!g_config.debug.log_to_file) return;
-    const auto path = g_state_path.parent_path() / "debug.log";
-    g_debug_log.open(path, std::ios::app);
-    if (!g_debug_log) {
-        g_warning("could not open debug log file %s", path.string().c_str());
-        return;
+    // Idempotent, also called on config reload: the flag may be
+    // toggled while the app runs, and a support session should not
+    // require a restart to take effect.
+    static bool active = false;
+    if (g_config.debug.log_to_file && !active) {
+        const auto path = g_state_path.parent_path() / "debug.log";
+        g_debug_log.open(path, std::ios::app);
+        if (!g_debug_log) {
+            g_warning("could not open debug log file %s", path.string().c_str());
+            return;
+        }
+        g_debug_log << "─── session start ───\n";
+        g_debug_log.flush();
+        g_log_set_writer_func(debug_log_writer, nullptr, nullptr);
+        active = true;
+        g_message("debug: logging to %s", path.string().c_str());
+    } else if (!g_config.debug.log_to_file && active) {
+        g_log_set_writer_func(nullptr, nullptr, nullptr);
+        g_debug_log.close();
+        active = false;
     }
-    g_debug_log << "─── session start ───\n";
-    g_debug_log.flush();
-    g_log_set_writer_func(debug_log_writer, nullptr, nullptr);
-    g_message("debug: logging to %s", path.string().c_str());
 }
 
 // Sensor → app logic. Runs on the GLib main thread (the pointer poll

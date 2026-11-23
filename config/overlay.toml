@@ -62,7 +62,7 @@ duration = "5:50"
 # reports a problem and we need to see what the app is doing.
 # Off by default: it appends forever.
 [debug]
-log_to_file = false
+log_to_file = true
 
 # How the global "make overlay clickable" combo reaches the app.
 #
